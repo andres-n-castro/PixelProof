@@ -5,8 +5,8 @@ import cv2 as cv
 import random as rand
 from torch.utils.data import Dataset, DataLoader
 
-REAL_FOLDER = "real"
-FAKE_FOLDER = "fake"
+REAL_FOLDER = "Processed Real"
+FAKE_FOLDER = "Processed Fake"
 
 
 def videos_dataset_creation(root_dir, labels : list[tuple[str, int], tuple[str, int]]):

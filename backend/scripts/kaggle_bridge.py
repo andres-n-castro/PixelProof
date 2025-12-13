@@ -16,9 +16,11 @@ if __name__ == "__main__":
   for file in files:
     if "original" in file.name and file.name.endswith(".mp4"):
       real_path = os.path.join(args.colab_disk_path, "real")
+      os.makedirs(real_path,exist_ok=True)
       api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=real_path)
     elif "Deepfakes" in file.name and file.name.endswith(".mp4"):
       fake_path = os.path.join(args.colab_disk_path, "fake")
+      os.makedirs(fake_path,exist_ok=True)
       api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=fake_path)
     else:
       continue

@@ -1,15 +1,13 @@
 #imports
 import torch
 import argparse
+import os
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
 import torchvision.models as models
 from dataset import videos_dataset_creation, DeepFakeDataset, DataLoader
 from model import DeepfakeDetector
-FILE_P1 = "save_model_p1.pth"
-FILE_P2 = "save_model_p2.pth"
-FILE_P3 = "save_model_p3.pth"
 
 def train_one_epoch(model, loader, optimizer, criterion):
   model.train()
@@ -99,6 +97,9 @@ if __name__ == "__main__":
   parser.add_argument("--epochs_resnet", metavar="num epochs resnet", type=int, default=15, help="provides num of epochs for phase 2 and 3 training")
   parser.add_argument("--batch_size", metavar="batch_size", type=int, default=32, help="provdies batch size for each DataLoader")
   args = parser.parse_args()
+  FILE_P1 = os.path.join(args.root_data_dir, "save_model_p1.pth")
+  FILE_P2 = os.path.join(args.root_data_dir, "save_model_p2.pth")
+  FILE_P3 = os.path.join(args.root_data_dir, "save_model_p3.pth")
 
   #device instantiation
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -110,7 +111,7 @@ if __name__ == "__main__":
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
   ])
 
-  labels = [('real', 0), ('fake', 1)]
+  labels = [('Processed Real', 0), ('Processed Fake', 1)]
 
   print(f"Loading data from: {args.root_data_dir}")
 

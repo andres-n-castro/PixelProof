@@ -4,18 +4,18 @@ import cv2 as cv
 from mtcnn import MTCNN
 import argparse
 from tqdm import tqdm
-PROCESSED_REAL = '../data/processed_data/real/'
-PROCESSED_FAKE = '../data/processed_data/fake/'
 mtcnn = MTCNN(device="CPU:0")
 
 
 
-def process_single_frame(video : str, dataset : str, dataset_type : int):
+def process_single_frame(video : str, dataset : str, dataset_type : int, dest_folder : str):
 
   video_path = os.path.join(dataset, video) #path for sample video
   current_frame = 0 #frame count for later use when labeling frames
   cv_video = cv.VideoCapture(video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
   frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) / 20) #step value in order to obtain every nth frame in a video (20 frames)
+  os.makedirs(os.path.join(dest_folder, "Processed Real"), exist_ok=True)
+  os.makedirs(os.path.join(dest_folder, "Processed Fake"), exist_ok=True)
 
   #if conditional in case video is less than 20 frames long, we wont use that video as a sample
   if frame_step == 0: 
@@ -53,20 +53,20 @@ def process_single_frame(video : str, dataset : str, dataset_type : int):
 
         if dataset_type == 0:
           filename = f"{video}_frame_{current_frame}_dataset_real.png"
-          store_path = os.path.join(PROCESSED_REAL, filename)
+          store_path = os.path.join(dest_folder, "Processed Real",filename)
           cv.imwrite(store_path, resized_face_frame)
         
         else:
           filename = f"{video}_frame_{current_frame}_dataset_fake.png"
-          store_path = os.path.join(PROCESSED_FAKE, filename)
+          store_path = os.path.join(dest_folder, "Processed Fake",filename)
           cv.imwrite(store_path, resized_face_frame)
 
 
-def obtain_face_frames(dataset_path : str):
+def obtain_face_frames(dataset_path : str, dest_folder_path : str):
   try:
     datasets = []
-    datasets.append(dataset_path + 'real')
-    datasets.append(dataset_path + 'fake')
+    datasets.append(dataset_path + '/real')
+    datasets.append(dataset_path + '/fake')
 
     for dataset in datasets:
       videos = os.listdir(dataset)
@@ -75,9 +75,9 @@ def obtain_face_frames(dataset_path : str):
         for video in tqdm(videos):
           
           if dataset == datasets[0]:
-            process_single_frame(video, dataset, 0)
+            process_single_frame(video, dataset, 0, dest_folder_path)
           else:
-            process_single_frame(video, dataset, 1)
+            process_single_frame(video, dataset, 1, dest_folder_path)
 
       except Exception as e:
         print(e)
@@ -90,7 +90,9 @@ def obtain_face_frames(dataset_path : str):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="finds the required dataset")
   parser.add_argument("dataset_path", metavar="dataset_path", type=str, help="finds the correct path to the required dataset")
+  parser.add_argument("destination_path", metavar="google drive folder", type=str, help="this is the full path for the google drive folder")
   args = parser.parse_args()
   path = args.dataset_path
-  obtain_face_frames(path)
+  dest_folder_path = args.destination_path
+  obtain_face_frames(path, dest_folder_path)
 
