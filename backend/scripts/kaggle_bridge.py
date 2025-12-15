@@ -1,4 +1,6 @@
 import os
+from zipfile import ZipFile
+import shutil
 import argparse
 from kaggle.api.kaggle_api_extended import KaggleApi
 
@@ -6,34 +8,47 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="temporarily stores kaggle dataset onto colab disk")
   parser.add_argument("colab_disk_path", metavar="path", type=str, help="argument for the colab disk path")
   args = parser.parse_args()
+  colab_path = args.colab_disk_path
+  real_folder = os.path.join(colab_path, 'real')
+  fake_folder = os.path.join(colab_path, 'fake')
+  os.makedirs(real_folder, exist_ok=True)
+  os.makedirs(fake_folder, exist_ok=True)
+  num_orig_files = 0
+  num_deepfake_files = 0
 
   api = KaggleApi()
   api.authenticate()
 
-  try:
-    page_token = None
 
-    while True:
-      files_list_result = api.dataset_list_files("xdxd003/ff-c23", page_token=page_token, page_size=200)
-      files = files_list_result.files
+  try:
+    api.dataset_download_files(dataset="xdxd003/ff-c23", path=colab_path,unzip=False)
+
+    with ZipFile(file=os.path.join(colab_path, "ff-c23.zip"), mode='r', allowZip64=True) as faceforensics_zip:
+      files = faceforensics_zip.namelist()
 
       for file in files:
-        if "original" in file.name and file.name.endswith(".mp4"):
-          print(f"found original video file : {file.name}")
-          real_path = os.path.join(args.colab_disk_path, "real")
-          os.makedirs(real_path,exist_ok=True)
-          api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=real_path)
-        elif "Deepfakes" in file.name and file.name.endswith(".mp4"):
-          print(f"found Deepfake video file : {file.name}")
-          fake_path = os.path.join(args.colab_disk_path, "fake")
-          os.makedirs(fake_path,exist_ok=True)
-          api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=fake_path)
+        if 'original' in file and file.endswith('.mp4'):
+          dest = real_folder
+          num_orig_files += 1
+                   
+        elif 'Deepfakes' in file and file.endswith('.mp4'):
+          dest = fake_folder
+          num_deepfake_files += 1
         else:
           continue
+        
+        tot_processed_video_files = num_orig_files + num_deepfake_files
+        if tot_processed_video_files % 100 == 0:
+          print(f"proccessed {tot_processed_video_files} video files so far...")
 
-      page_token = files_list_result.get("nextPageToken")
+        file_name = os.path.basename(file)
+        with faceforensics_zip.open(file, 'rb') as source_file, open(os.path.join(dest,file_name), 'wb') as target_file: 
+          shutil.copyfileobj(source_file, target_file)
+        
+    print(f"{num_orig_files} original video files stored | {num_deepfake_files} deepfake video files stored")
+    print("Removing downloaded zip file...")
+    os.remove(os.path.join(colab_path, 'ff-c23.zip'))
+    print("All Done!")
 
-      if not page_token:
-        break
   except Exception as e:
     print(f"error: {e}")
