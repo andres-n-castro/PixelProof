@@ -12,21 +12,28 @@ if __name__ == "__main__":
 
   try:
     page_token = None
-    files_list_result = api.dataset_list_files("xdxd003/ff-c23", page_token=page_token, page_size=200)
-    files = files_list_result.files
 
-    for file in files:
-      if "original" in file.name and file.name.endswith(".mp4"):
-        print(f"found original video file : {file.name}")
-        real_path = os.path.join(args.colab_disk_path, "real")
-        os.makedirs(real_path,exist_ok=True)
-        api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=real_path)
-      elif "Deepfakes" in file.name and file.name.endswith(".mp4"):
-        print(f"found Deepfake video file : {file.name}")
-        fake_path = os.path.join(args.colab_disk_path, "fake")
-        os.makedirs(fake_path,exist_ok=True)
-        api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=fake_path)
-      else:
-        continue
+    while True:
+      files_list_result = api.dataset_list_files("xdxd003/ff-c23", page_token=page_token, page_size=200)
+      files = files_list_result.files
+
+      for file in files:
+        if "original" in file.name and file.name.endswith(".mp4"):
+          print(f"found original video file : {file.name}")
+          real_path = os.path.join(args.colab_disk_path, "real")
+          os.makedirs(real_path,exist_ok=True)
+          api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=real_path)
+        elif "Deepfakes" in file.name and file.name.endswith(".mp4"):
+          print(f"found Deepfake video file : {file.name}")
+          fake_path = os.path.join(args.colab_disk_path, "fake")
+          os.makedirs(fake_path,exist_ok=True)
+          api.dataset_download_file(dataset="xdxd003/ff-c23", file_name=file.name, path=fake_path)
+        else:
+          continue
+
+      page_token = files_list_result.get("nextPageToken")
+
+      if not page_token:
+        break
   except Exception as e:
     print(f"error: {e}")
