@@ -21,7 +21,9 @@ if __name__ == "__main__":
 
 
   try:
-    api.dataset_download_files(dataset="xdxd003/ff-c23", path=colab_path,unzip=False)
+    print("found dataset!")
+    api.dataset_download_files(dataset="xdxd003/ff-c23", path=colab_path, unzip=False)
+    print("download finished!")
 
     with ZipFile(file=os.path.join(colab_path, "ff-c23.zip"), mode='r', allowZip64=True) as faceforensics_zip:
       files = faceforensics_zip.namelist()
