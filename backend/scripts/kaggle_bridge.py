@@ -2,13 +2,16 @@ import os
 from zipfile import ZipFile
 import shutil
 import argparse
+import subprocess as sp
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="temporarily stores kaggle dataset onto colab disk")
   parser.add_argument("colab_disk_path", metavar="path", type=str, help="argument for the colab disk path")
+  parser.add_argument("google_drive_path", metavar="path", type=str, help="argument for the google drive path")
   args = parser.parse_args()
   colab_path = args.colab_disk_path
+  drive_path = args.google_drive_path
   real_folder = os.path.join(colab_path, 'real')
   fake_folder = os.path.join(colab_path, 'fake')
   os.makedirs(real_folder, exist_ok=True)
@@ -21,11 +24,7 @@ if __name__ == "__main__":
 
 
   try:
-    print("found dataset!")
-    api.dataset_download_files(dataset="xdxd003/ff-c23", path=colab_path, unzip=False)
-    print("download finished!")
-
-    with ZipFile(file=os.path.join(colab_path, "ff-c23.zip"), mode='r', allowZip64=True) as faceforensics_zip:
+    with ZipFile(file=os.path.join(drive_path, "ff-c23.zip"), mode='r', allowZip64=True) as faceforensics_zip:
       files = faceforensics_zip.namelist()
 
       for file in files:
