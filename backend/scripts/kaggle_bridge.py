@@ -10,7 +10,7 @@ if __name__ == "__main__":
   parser.add_argument("bucket_name", metavar="cloud bucket name", type=str, help="argument for the google cloud bucket name")
   args = parser.parse_args()
   input_path = args.kaggle_input_path
-  bucket_name = args._bucket_name
+  bucket_name = args.bucket_name
 
   try:
     storage_client = storage.Client(project='pixelproof-data-storage')
