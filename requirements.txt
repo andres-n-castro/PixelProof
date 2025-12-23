@@ -105,7 +105,6 @@ python-dateutil==2.9.0.post0
 python-json-logger==4.0.0
 python-slugify==8.0.4
 pytokens==0.3.0
-pytorch-ignite==0.5.3
 pytz==2025.2
 pywinpty==3.0.2
 PyYAML==6.0.3

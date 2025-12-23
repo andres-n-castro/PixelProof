@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 REAL_FOLDER = "Processed Real"
 FAKE_FOLDER = "Processed Fake"
 
-
+'''
 def videos_dataset_creation(root_dir, labels : list[tuple[str, int], tuple[str, int]]):
   videos = []
   for label in labels:
@@ -24,7 +24,7 @@ def videos_dataset_creation(root_dir, labels : list[tuple[str, int], tuple[str, 
   rand.shuffle(videos)
 
   return videos
-
+'''
 #custom dataset
 class DeepFakeDataset(Dataset):
   def __init__(self, sequence_length, root_dir, dataset,transforms=None):
