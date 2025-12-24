@@ -4,18 +4,31 @@ import cv2 as cv
 from mtcnn import MTCNN
 import argparse
 from tqdm import tqdm
+from google.cloud import storage
+from zipfile import ZipFile
+import pandas as pd
 mtcnn = MTCNN(device="CPU:0")
 
 
+#full_video_path, label, destination(bucket)
+def process_single_frame(full_video_path : str, label : str, bucket : storage.Client.bucket):
 
-def process_single_frame(video : str, dataset : str, dataset_type : int, dest_folder : str):
-
+  '''
   video_path = os.path.join(dataset, video) #path for sample video
   current_frame = 0 #frame count for later use when labeling frames
   cv_video = cv.VideoCapture(video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
   frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) / 20) #step value in order to obtain every nth frame in a video (20 frames)
   os.makedirs(os.path.join(dest_folder, "Processed Real"), exist_ok=True)
   os.makedirs(os.path.join(dest_folder, "Processed Fake"), exist_ok=True)
+  '''
+  parsed_video = full_video_path.split('/')
+  video_id = parsed_video[-1]
+
+  current_frame = 0 #frame count for later use when labeling frames
+  cv_video = cv.VideoCapture(full_video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
+  frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) / 20) #step value in order to obtain every nth frame in a video (20 frames)
+
+  #SAVE FROM HERE
 
   #if conditional in case video is less than 20 frames long, we wont use that video as a sample
   if frame_step == 0: 
@@ -51,48 +64,58 @@ def process_single_frame(video : str, dataset : str, dataset_type : int, dest_fo
     
         resized_face_frame = cv.resize(face_frame, (256, 256)) #resizes face frame
 
-        if dataset_type == 0:
-          filename = f"{video}_frame_{current_frame}_dataset_real.png"
+        if label == 'REAL':
+          filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
+
+          #must fix since cannot store directly to bucket   
           store_path = os.path.join(dest_folder, "Processed Real",filename)
           cv.imwrite(store_path, resized_face_frame)
         
         else:
-          filename = f"{video}_frame_{current_frame}_dataset_fake.png"
-          store_path = os.path.join(dest_folder, "Processed Fake",filename)
+          filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
+
+          #must fix since cannot store directly to bucket          store_path = os.path.join(dest_folder, "Processed Fake",filename)
           cv.imwrite(store_path, resized_face_frame)
 
 
-def obtain_face_frames(dataset_path : str, dest_folder_path : str):
+def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : storage.Client.bucket):
   try:
-    datasets = []
-    datasets.append(dataset_path + '/real')
-    datasets.append(dataset_path + '/fake')
-
-    for dataset in datasets:
-      videos = os.listdir(dataset)
-
-      try:
-        for video in tqdm(videos):
-          
-          if dataset == datasets[0]:
-            process_single_frame(video, dataset, 0, dest_folder_path)
-          else:
-            process_single_frame(video, dataset, 1, dest_folder_path)
-
-      except Exception as e:
-        print(e)
-        exit()
+    for row in master_df[['File Path, Label']].itertuples(name=None):
+      full_video_path = os.path.join(input_dir, row[1])
+      process_single_frame(full_video_path, row[2], bucket)
 
   except Exception as e:
-    print(e)
+    print(f"error: {e}")
     exit()
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="finds the required dataset")
-  parser.add_argument("dataset_path", metavar="dataset_path", type=str, help="finds the correct path to the required dataset")
-  parser.add_argument("destination_path", metavar="google drive folder", type=str, help="this is the full path for the google drive folder")
+  parser.add_argument("kaggle_input_dir", metavar="input dir", type=str, help="arg for input dir")
+  parser.add_argument("bucket_name", metavar="gcs bucket", type=str, help="arg for gcs bucket name")
+  parser.add_argument("project_id", metavar="proj_id", type=str, help="the project id in order to access the project and then the bucket within")
+  parser.add_argument("master_path", metavar="master_csv_path", type=str)
   args = parser.parse_args()
   path = args.dataset_path
-  dest_folder_path = args.destination_path
-  obtain_face_frames(path, dest_folder_path)
+  bucket_name = args.bucket_name
+  input_dir = args.kaggle_input_dir
+  proj_id = args.project_id
+  master_csv_path = args.master_path
+  kaggle_work_dir = 'kaggle/working'
+
+  try:
+    storage_client = storage.Client(proj_id)
+    bucket = storage_client.bucket(bucket_name=bucket_name)
+
+    blob = bucket.blob(blob_name=master_csv_path)
+    blob.download_to_filename(os.path.join(kaggle_work_dir, 'master.csv'))
+
+    with ZipFile(os.path.join(kaggle_work_dir, 'master.csv'), 'r') as csv_zip:
+      with csv_zip.open('master.csv') as master_csv:
+        master_df = pd.read_csv(master_csv)
+
+    obtain_face_frames(input_dir, bucket, master_df)
+  
+  except Exception as e:
+    print(f"error: {e}")
+    exit()
 

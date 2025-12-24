@@ -8,12 +8,14 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="temporarily stores kaggle dataset onto colab disk")
   parser.add_argument("kaggle_input_path", metavar="kaggle input path", type=str, help="argument for the kaggle input directory")
   parser.add_argument("bucket_name", metavar="cloud bucket name", type=str, help="argument for the google cloud bucket name")
+  parser.add_argument("project_id", metavar="proj_id", type=str, help="the project id in order to access the project and then the bucket within")
   args = parser.parse_args()
   input_path = args.kaggle_input_path
   bucket_name = args.bucket_name
+  proj_id = args.project_id
 
   try:
-    storage_client = storage.Client(project='pixelproof-data-storage')
+    storage_client = storage.Client(project=proj_id)
     bucket = storage_client.bucket(bucket_name=bucket_name)
 
     orig_df = pd.read_csv(os.path.join(input_path, 'original.csv'))
