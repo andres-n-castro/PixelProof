@@ -115,7 +115,9 @@ if __name__ == "__main__":
 
   print(f"Loading data from: {args.root_data_dir}")
 
-  #create list of tuples of videos
+  #!change this so that instead of a tuple it just takes portions of the csv file since
+  #!creating a tuple of this magnitude would take a lot of CPU time, leaving the GPU sitting
+  #!idle for multiple seconds at a time
   videos_dataset = videos_dataset_creation(args.root_data_dir, labels)
 
   #creating and splitting datasets
