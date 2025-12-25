@@ -133,6 +133,7 @@ if __name__ == "__main__":
   parser.add_argument("bucket_name", metavar="gcs bucket", type=str, help="arg for gcs bucket name")
   parser.add_argument("project_id", metavar="proj_id", type=str, help="the project id in order to access the project and then the bucket within")
   parser.add_argument("master_path", metavar="master_csv_path", type=str)
+
   args = parser.parse_args()
   bucket_name = args.bucket_name
   input_dir = args.kaggle_input_dir
@@ -152,8 +153,9 @@ if __name__ == "__main__":
     with ZipFile(os.path.join(kaggle_work_dir, 'csv.zip'), 'r') as csv_zip:
       with csv_zip.open('master.csv') as master_csv:
         master_df = pd.read_csv(master_csv)
+        print(master_df.columns)
 
-    obtain_face_frames(input_dir, master_df, bucket)
+    #obtain_face_frames(input_dir, master_df, bucket)
   
   except Exception as e:
     print(f"error: {e}")
