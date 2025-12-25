@@ -3,7 +3,6 @@ import os
 import cv2 as cv
 from mtcnn import MTCNN
 import argparse
-from tqdm import tqdm
 from google.cloud import storage
 from zipfile import ZipFile
 import pandas as pd
@@ -132,7 +131,7 @@ if __name__ == "__main__":
     storage_client = storage.Client(proj_id)
     bucket = storage_client.bucket(bucket_name=bucket_name)
 
-    blob = bucket.blob(blob_name=master_csv_path)
+    blob = bucket.blob(blob_name=os.path.join(master_csv_path, 'csv.zip'))
     blob.download_to_filename(os.path.join(kaggle_work_dir, 'csv.zip'))
 
     with ZipFile(os.path.join(kaggle_work_dir, 'csv.zip'), 'r') as csv_zip:
