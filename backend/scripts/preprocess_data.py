@@ -96,27 +96,31 @@ def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : stora
       for row in master_df[['File Path', 'Label']].itertuples(name=None):
         if row[2] == "REAL":
           full_video_path = os.path.join(input_dir, row[1])
-          frames = process_single_video(full_video_path, row[2], bucket)
+          frames = process_single_video(full_video_path, row[2])
 
           for frame_info in frames:
             real_zip.writestr(frame_info[1], frame_info[0])
 
         elif row[2] == "FAKE":
           full_video_path = os.path.join(input_dir, row[1])
-          frames = process_single_video(full_video_path, row[2], bucket)
+          frames = process_single_video(full_video_path, row[2])
 
           for frame_info in frames:
             fake_zip.writestr(frame_info[1], frame_info[0])
         
         else: continue
 
+    print("uploading real_frames.zip...")
     blob_name = "processed_real/real_frames.zip"
     blob = bucket.blob(blob_name=blob_name)
     blob.upload_from_filename("real_frames.zip")
+    print("upload successfull!\n")
 
+    print("uploading fake_frames.zip...")
     blob_name = "processed_fake/fake_frames.zip"
     blob = bucket.blob(blob_name=blob_name)
     blob.upload_from_filename("fake_frames.zip")
+    print("upload successfull!\n")
 
 
   except Exception as e:
