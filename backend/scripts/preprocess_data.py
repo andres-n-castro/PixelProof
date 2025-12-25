@@ -18,15 +18,21 @@ def process_single_video(full_video_path : str, label : str):
 
     current_frame = 0 #frame count for later use when labeling frames
     cv_video = cv.VideoCapture(full_video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
-    frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) / 20) #step value in order to obtain every nth frame in a video (20 frames)
 
-    #SAVE FROM HERE
+    if cv_video.isOpened():
+      frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) // 20) #step value in order to obtain every nth frame in a video (20 frames)
 
-    #if conditional in case video is less than 20 frames long, we wont use that video as a sample
-    if frame_step == 0: 
-      return []
 
-    frames = []
+      #if conditional in case video is less than 20 frames long, we wont use that video as a sample
+      if frame_step == 0: 
+        print("less than 20 frames in video file, returning and moving to next video file")
+        return []
+
+      frames = []
+    
+    else:
+      print("videocapture failed to create object")
+      exit()
   
   except Exception as e:
     print(f"error: {e}")
@@ -41,6 +47,7 @@ def process_single_video(full_video_path : str, label : str):
       success, frame = cv_video.read() #processes the frame at frame_index and retrieve frame information as a well as return a value if it was successfull or not
 
       if success == False:
+        print("failed to retrieve frame from video, returning and moving to next video file")
         return []
 
       #changes the channels from BGR to RGB so that mtcnn can detect faces (mtcnn requires RBG and opencv process in BGR)
