@@ -94,17 +94,21 @@ def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : stora
   try:
     print("creating real_frames.zip and fake_frames.zip and opening them for writing...")
     with ZipFile("real_frames.zip", 'w') as real_zip, ZipFile("fake_frames.zip", 'w') as fake_zip:
-      print("iterating through master.csv...")
+      print("iterating through master.csv...\n")
       for row in master_df[['File Path', 'Label']].itertuples(name=None):
         if row[2] == "REAL":
+          print("found an original video file!")
           full_video_path = os.path.join(input_dir, row[1])
+          print("processing original video file..\n")
           frames = process_single_video(full_video_path, row[2])
 
           for frame_info in frames:
             real_zip.writestr(frame_info[1], frame_info[0])
 
         elif row[2] == "FAKE":
+          print("found an deepfake video file!")
           full_video_path = os.path.join(input_dir, row[1])
+          print("processing deepfake video file..\n")
           frames = process_single_video(full_video_path, row[2])
 
           for frame_info in frames:
