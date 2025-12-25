@@ -125,7 +125,7 @@ if __name__ == "__main__":
   input_dir = args.kaggle_input_dir
   proj_id = args.project_id
   master_csv_path = args.master_path
-  kaggle_work_dir = 'kaggle/working'
+  #kaggle_work_dir = '../../../kaggle/working'
 
   try:
     storage_client = storage.Client(proj_id)
@@ -133,10 +133,10 @@ if __name__ == "__main__":
 
     print("downloading csv.zip file from bucket...")
     blob = bucket.blob(blob_name=master_csv_path)
-    blob.download_to_filename(os.path.join(kaggle_work_dir, 'csv.zip'))
+    blob.download_to_filename('csv.zip')
     print("download successfull!")
 
-    with ZipFile(os.path.join(kaggle_work_dir, 'csv.zip'), 'r') as csv_zip:
+    with ZipFile('csv.zip', 'r') as csv_zip:
       with csv_zip.open('master.csv') as master_csv:
         master_df = pd.read_csv(master_csv)
 
