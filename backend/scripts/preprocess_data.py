@@ -15,7 +15,8 @@ def process_single_video(full_video_path : str, label : str):
   try:
     parsed_video = full_video_path.split('/')
     video_id = parsed_video[-1]
-    print(full_video_path)
+    video_path_valid = os.path.exists(full_video_path)
+    print(f"{full_video_path} is {video_path_valid}")
 
     current_frame = 0 #frame count for later use when labeling frames
     cv_video = cv.VideoCapture(full_video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
