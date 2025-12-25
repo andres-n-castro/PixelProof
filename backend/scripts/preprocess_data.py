@@ -131,8 +131,10 @@ if __name__ == "__main__":
     storage_client = storage.Client(proj_id)
     bucket = storage_client.bucket(bucket_name=bucket_name)
 
+    print("downloading csv.zip file from bucket...")
     blob = bucket.blob(blob_name=os.path.join(master_csv_path, 'csv.zip'))
     blob.download_to_filename(os.path.join(kaggle_work_dir, 'csv.zip'))
+    print("download successfull!")
 
     with ZipFile(os.path.join(kaggle_work_dir, 'csv.zip'), 'r') as csv_zip:
       with csv_zip.open('master.csv') as master_csv:
