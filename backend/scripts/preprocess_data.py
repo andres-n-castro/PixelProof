@@ -12,72 +12,81 @@ mtcnn = MTCNN()
 #full_video_path, label, destination(bucket)
 def process_single_video(full_video_path : str, label : str):
 
-  parsed_video = full_video_path.split('/')
-  video_id = parsed_video[-1]
+  try:
+    parsed_video = full_video_path.split('/')
+    video_id = parsed_video[-1]
 
-  current_frame = 0 #frame count for later use when labeling frames
-  cv_video = cv.VideoCapture(full_video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
-  frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) / 20) #step value in order to obtain every nth frame in a video (20 frames)
+    current_frame = 0 #frame count for later use when labeling frames
+    cv_video = cv.VideoCapture(full_video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
+    frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) / 20) #step value in order to obtain every nth frame in a video (20 frames)
 
-  #SAVE FROM HERE
+    #SAVE FROM HERE
 
-  #if conditional in case video is less than 20 frames long, we wont use that video as a sample
-  if frame_step == 0: 
-    return []
-
-  frames = []
-
-  #loops through all 20 frames in a video since for each video we are extracting 20 frames
-  for current_frame in range(20):
-    
-    frame_index = current_frame * frame_step # index for the current frame we want 
-    cv_video.set(cv.CAP_PROP_POS_FRAMES, frame_index) #sets the VideoCapture var cv_video to capture video[frame_index]
-    success, frame = cv_video.read() #processes the frame at frame_index and retrieve frame information as a well as return a value if it was successfull or not
-
-    if success == False:
+    #if conditional in case video is less than 20 frames long, we wont use that video as a sample
+    if frame_step == 0: 
       return []
 
-    #changes the channels from BGR to RGB so that mtcnn can detect faces (mtcnn requires RBG and opencv process in BGR)
-    image = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+    frames = []
+  
+  except Exception as e:
+    print(f"error: {e}")
+    exit()
 
-    result = mtcnn.detect_faces(image) #mtcnn retrieves any faces within the frame information
+  try:
+    #loops through all 20 frames in a video since for each video we are extracting 20 frames
+    for current_frame in range(20):
+      
+      frame_index = current_frame * frame_step # index for the current frame we want 
+      cv_video.set(cv.CAP_PROP_POS_FRAMES, frame_index) #sets the VideoCapture var cv_video to capture video[frame_index]
+      success, frame = cv_video.read() #processes the frame at frame_index and retrieve frame information as a well as return a value if it was successfull or not
 
-    #if a face was retrieved then use boundbox coordinates to obtain face from original frame information
-    #and then resize the face frame into the original 256 x 256 that the frame was in. Each frame goes into
-    #their respective folder whether the frame belongs to a video that is fake(use deepfake) or real. The sample
-    #is stored in its folder with 
-    if result:
-      box = result[0]['box']
-      x, y, w, h = box[0], box[1], box[2], box[3]
-      x, y, = max(0, x), max(0, y) #ensures the coordinates cannot be negative in the case that the bounding box captures a face oustide the bounds of the orig frame size
+      if success == False:
+        return []
 
-      face_frame = frame[y : y + h, x : x + w] # obtains the face within the frame using the bounding box coords
+      #changes the channels from BGR to RGB so that mtcnn can detect faces (mtcnn requires RBG and opencv process in BGR)
+      image = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
 
-      if face_frame.size != 0:
-    
-        resized_face_frame = cv.resize(face_frame, (256, 256)) #resizes face frame
+      result = mtcnn.detect_faces(image) #mtcnn retrieves any faces within the frame information
 
-        if label == 'REAL':
-          filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
+      #if a face was retrieved then use boundbox coordinates to obtain face from original frame information
+      #and then resize the face frame into the original 256 x 256 that the frame was in. Each frame goes into
+      #their respective folder whether the frame belongs to a video that is fake(use deepfake) or real. The sample
+      #is stored in its folder with 
+      if result:
+        box = result[0]['box']
+        x, y, w, h = box[0], box[1], box[2], box[3]
+        x, y, = max(0, x), max(0, y) #ensures the coordinates cannot be negative in the case that the bounding box captures a face oustide the bounds of the orig frame size
 
-          success, frame_buffer = cv.imencode(".png", resized_face_frame)
-          if success:
-            frames.append((frame_buffer.tobytes(), filename))
+        face_frame = frame[y : y + h, x : x + w] # obtains the face within the frame using the bounding box coords
+
+        if face_frame.size != 0:
+      
+          resized_face_frame = cv.resize(face_frame, (256, 256)) #resizes face frame
+
+          if label == 'REAL':
+            filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
+
+            success, frame_buffer = cv.imencode(".png", resized_face_frame)
+            if success:
+              frames.append((frame_buffer.tobytes(), filename))
+            else:
+              print("writing frame to memory was unsuccessfull!")
+              return []
+
           else:
-            print("writing frame to memory was unsuccessfull!")
-            return []
-
-        else:
-          filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
+            filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
+            
+            success, frame_buffer = cv.imencode(".png", resized_face_frame)
+            if success:
+              frames.append((frame_buffer.tobytes(), filename))
+            else:
+              print("writing frame to memory was unsuccessfull!")
+              return []
           
-          success, frame_buffer = cv.imencode(".png", resized_face_frame)
-          if success:
-            frames.append((frame_buffer.tobytes(), filename))
-          else:
-            print("writing frame to memory was unsuccessfull!")
-            return []
-        
-  return frames
+    return frames
+  except Exception as e:
+    print(f"error: {e}")
+    exit()
 
 
 
@@ -140,7 +149,7 @@ if __name__ == "__main__":
       with csv_zip.open('master.csv') as master_csv:
         master_df = pd.read_csv(master_csv)
 
-    obtain_face_frames(input_dir, master_df)
+    obtain_face_frames(input_dir, master_df, bucket)
   
   except Exception as e:
     print(f"error: {e}")
