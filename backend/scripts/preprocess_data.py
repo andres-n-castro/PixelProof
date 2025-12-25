@@ -92,7 +92,9 @@ def process_single_video(full_video_path : str, label : str):
 
 def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : storage.Client.bucket):
   try:
+    print("creating real_frames.zip and fake_frames.zip and opening them for writing...")
     with ZipFile("real_frames.zip", 'w') as real_zip, ZipFile("fake_frames.zip", 'w') as fake_zip:
+      print("iterating through master.csv...")
       for row in master_df[['File Path', 'Label']].itertuples(name=None):
         if row[2] == "REAL":
           full_video_path = os.path.join(input_dir, row[1])
@@ -156,6 +158,7 @@ if __name__ == "__main__":
       with csv_zip.open('master.csv') as master_csv:
         master_df = pd.read_csv(master_csv)
 
+    print(master_df.columns)
     obtain_face_frames(input_dir, master_df, bucket)
   
   except Exception as e:
