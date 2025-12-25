@@ -7,20 +7,12 @@ from tqdm import tqdm
 from google.cloud import storage
 from zipfile import ZipFile
 import pandas as pd
-mtcnn = MTCNN(device="CPU:0")
+mtcnn = MTCNN()
 
 
 #full_video_path, label, destination(bucket)
-def process_single_frame(full_video_path : str, label : str, bucket : storage.Client.bucket):
+def process_single_video(full_video_path : str, label : str):
 
-  '''
-  video_path = os.path.join(dataset, video) #path for sample video
-  current_frame = 0 #frame count for later use when labeling frames
-  cv_video = cv.VideoCapture(video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
-  frame_step = int(cv_video.get(cv.CAP_PROP_FRAME_COUNT) / 20) #step value in order to obtain every nth frame in a video (20 frames)
-  os.makedirs(os.path.join(dest_folder, "Processed Real"), exist_ok=True)
-  os.makedirs(os.path.join(dest_folder, "Processed Fake"), exist_ok=True)
-  '''
   parsed_video = full_video_path.split('/')
   video_id = parsed_video[-1]
 
@@ -32,7 +24,9 @@ def process_single_frame(full_video_path : str, label : str, bucket : storage.Cl
 
   #if conditional in case video is less than 20 frames long, we wont use that video as a sample
   if frame_step == 0: 
-    return
+    return []
+
+  frames = []
 
   #loops through all 20 frames in a video since for each video we are extracting 20 frames
   for current_frame in range(20):
@@ -42,7 +36,7 @@ def process_single_frame(full_video_path : str, label : str, bucket : storage.Cl
     success, frame = cv_video.read() #processes the frame at frame_index and retrieve frame information as a well as return a value if it was successfull or not
 
     if success == False:
-      return
+      return []
 
     #changes the channels from BGR to RGB so that mtcnn can detect faces (mtcnn requires RBG and opencv process in BGR)
     image = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
@@ -67,22 +61,55 @@ def process_single_frame(full_video_path : str, label : str, bucket : storage.Cl
         if label == 'REAL':
           filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
 
-          #must fix since cannot store directly to bucket   
-          store_path = os.path.join(dest_folder, "Processed Real",filename)
-          cv.imwrite(store_path, resized_face_frame)
-        
+          success, frame_buffer = cv.imencode(".png", resized_face_frame)
+          if success:
+            frames.append((frame_buffer.tobytes(), filename))
+          else:
+            print("writing frame to memory was unsuccessfull!")
+            return []
+
         else:
           filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
+          
+          success, frame_buffer = cv.imencode(".png", resized_face_frame)
+          if success:
+            frames.append((frame_buffer.tobytes(), filename))
+          else:
+            print("writing frame to memory was unsuccessfull!")
+            return []
+        
+  return frames
 
-          #must fix since cannot store directly to bucket          store_path = os.path.join(dest_folder, "Processed Fake",filename)
-          cv.imwrite(store_path, resized_face_frame)
 
 
 def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : storage.Client.bucket):
   try:
-    for row in master_df[['File Path, Label']].itertuples(name=None):
-      full_video_path = os.path.join(input_dir, row[1])
-      process_single_frame(full_video_path, row[2], bucket)
+    with ZipFile("real_frames.zip", 'w') as real_zip, ZipFile("fake_frames.zip", 'w') as fake_zip:
+      for row in master_df[['File Path', 'Label']].itertuples(name=None):
+        if row[2] == "REAL":
+          full_video_path = os.path.join(input_dir, row[1])
+          frames = process_single_video(full_video_path, row[2], bucket)
+
+          for frame_info in frames:
+            real_zip.writestr(frame_info[1], frame_info[0])
+
+        elif row[2] == "FAKE":
+          full_video_path = os.path.join(input_dir, row[1])
+          frames = process_single_video(full_video_path, row[2], bucket)
+
+          for frame_info in frames:
+            fake_zip.writestr(frame_info[1], frame_info[0])
+        
+        else: continue
+
+    blob_name = "processed_real/real_frames.zip"
+    blob = bucket.blob(blob_name=blob_name)
+    blob.upload_from_filename("real_frames.zip")
+
+    blob_name = "processed_fake/fake_frames.zip"
+    blob = bucket.blob(blob_name=blob_name)
+    blob.upload_from_filename("fake_frames.zip")
+
 
   except Exception as e:
     print(f"error: {e}")
@@ -95,7 +122,6 @@ if __name__ == "__main__":
   parser.add_argument("project_id", metavar="proj_id", type=str, help="the project id in order to access the project and then the bucket within")
   parser.add_argument("master_path", metavar="master_csv_path", type=str)
   args = parser.parse_args()
-  path = args.dataset_path
   bucket_name = args.bucket_name
   input_dir = args.kaggle_input_dir
   proj_id = args.project_id
@@ -107,13 +133,13 @@ if __name__ == "__main__":
     bucket = storage_client.bucket(bucket_name=bucket_name)
 
     blob = bucket.blob(blob_name=master_csv_path)
-    blob.download_to_filename(os.path.join(kaggle_work_dir, 'master.csv'))
+    blob.download_to_filename(os.path.join(kaggle_work_dir, 'csv.zip'))
 
-    with ZipFile(os.path.join(kaggle_work_dir, 'master.csv'), 'r') as csv_zip:
+    with ZipFile(os.path.join(kaggle_work_dir, 'csv.zip'), 'r') as csv_zip:
       with csv_zip.open('master.csv') as master_csv:
         master_df = pd.read_csv(master_csv)
 
-    obtain_face_frames(input_dir, bucket, master_df)
+    obtain_face_frames(input_dir, master_df)
   
   except Exception as e:
     print(f"error: {e}")
