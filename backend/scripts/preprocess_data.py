@@ -108,7 +108,9 @@ def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : stora
           for frame_info in frames:
             fake_zip.writestr(frame_info[1], frame_info[0])
         
-        else: continue
+        else:
+          print("label not REAL or FAKE, continuing to next row/sample in csv")
+          continue
 
     print("uploading real_frames.zip...")
     blob_name = "processed_real/real_frames.zip"
@@ -153,9 +155,8 @@ if __name__ == "__main__":
     with ZipFile(os.path.join(kaggle_work_dir, 'csv.zip'), 'r') as csv_zip:
       with csv_zip.open('master.csv') as master_csv:
         master_df = pd.read_csv(master_csv)
-        print(master_df.columns)
 
-    #obtain_face_frames(input_dir, master_df, bucket)
+    obtain_face_frames(input_dir, master_df, bucket)
   
   except Exception as e:
     print(f"error: {e}")
