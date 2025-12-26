@@ -19,8 +19,7 @@ def process_single_video(full_video_path, label, detector):
   try:
     parsed_video = full_video_path.split('/')
     video_id = parsed_video[-1]
-    video_path_valid = os.path.exists(full_video_path)
-    print(f"{full_video_path} is {video_path_valid}")
+    print(f"processing original video file :{video_id}\n")
 
     current_frame = 0 #frame count for later use when labeling frames
     cv_video = cv.VideoCapture(full_video_path) #uses opencv to create a VideoCapture object from the video and start applying methods to the video
@@ -148,7 +147,6 @@ def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : Bucke
           if row[2] == "REAL":
             print("found an original video file!")
             full_video_path = os.path.join(input_dir, row[1])
-            print("processing original video file..\n")
             frames = process_single_video(full_video_path, row[2], detector)
 
             for frame_info in frames:
@@ -210,8 +208,12 @@ if __name__ == "__main__":
     print("face detect model successfully retrieved!")
     
     options = FaceDetectorOptions(
-    base_options=BaseOptions(model_asset_path=os.path.join(kaggle_work_dir, face_detect_model)),
-    running_mode=VisionRunningMode.IMAGE)
+      base_options=BaseOptions(
+        model_asset_path=os.path.join(kaggle_work_dir, face_detect_model),
+        delegate=BaseOptions.Delegate.GPU
+        ),
+      running_mode=VisionRunningMode.IMAGE
+    )
 
     print("downloading csv.zip file from bucket...")
     blob = bucket.blob(blob_name=master_csv_path)
