@@ -1,15 +1,29 @@
 
 import os
 import cv2 as cv
-from mtcnn import MTCNN
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 import argparse
 from google.cloud import storage
 from zipfile import ZipFile
 import pandas as pd
-mtcnn = MTCNN()
 
+BaseOptions = mp.tasks.BaseOptions
+FaceDetector = vision.FaceDetector
+FaceDetectorOptions = vision.FaceDetectorOptions
+VisionRunningMode = vision.RunningMode
 
-#full_video_path, label, destination(bucket)
+options = FaceDetectorOptions(
+  base_options=BaseOptions(model_asset_path='path/to.model.task'),
+  running_mode=VisionRunningMode.Image)
+
+def normalized_to_pixel_coords(norm_x, norm_y, x_w, y_h):
+  pixel_coord_x = int(norm_x * x_w)
+  pixel_coord_y = int(norm_y * y_h)
+  return (pixel_coord_x, pixel_coord_y)
+  
+
 def process_single_video(full_video_path : str, label : str):
 
   try:
@@ -40,6 +54,50 @@ def process_single_video(full_video_path : str, label : str):
     print(f"error: {e}")
     exit()
 
+  #mediapipe implementation (current supported API --> Face Detector)
+  try:
+    with FaceDetector.create_from_options(options) as detector:
+      for current_frame in range(20):
+        frame_idx = current_frame * frame_step
+        cv_video.set(cv.CAP_PROP_POS_FRAMES, frame_idx)
+
+        success, frame = cv_video.read()
+
+        if not success:
+          print("failed to retrieve frame, returning and moving to next video file!")
+          return []
+
+        #create a copy of the frame to pass to media pipe so you dont have to convert back to
+        #RGB when you load back into cv later
+        frame_copy = frame.copy()
+        result = detector.detect(cv.cvtColor(frame_copy, cv.COLOR_BGR2RGB))
+
+        if not result.detections:
+          continue
+        
+        if len(result.detections) > 1:
+          largest_face_idx, largest_face_area = 0, 0
+          for idx, detection in enumerate(result.detections):
+            cur_face_area = detection['BoundingBox'].width * detection['BoundingBox'].height
+            if max(largest_face_area, cur_face_area) == cur_face_area:
+              largest_face_idx, largest_face_area = idx, cur_face_area
+            else: continue
+
+            chosen_face_frame = result.detections[f"Detection #{largest_face_idx}"]
+
+
+        else:
+          for face_frame in result.detections:
+            x_w, y_h = frame.shape
+
+
+
+
+  except Exception as e:
+    print(f"error: {e}")
+    return []
+  
+  '''
   try:
     #loops through all 20 frames in a video since for each video we are extracting 20 frames
     for current_frame in range(20):
@@ -57,10 +115,6 @@ def process_single_video(full_video_path : str, label : str):
 
       result = mtcnn.detect_faces(image) #mtcnn retrieves any faces within the frame information
 
-      #if a face was retrieved then use boundbox coordinates to obtain face from original frame information
-      #and then resize the face frame into the original 256 x 256 that the frame was in. Each frame goes into
-      #their respective folder whether the frame belongs to a video that is fake(use deepfake) or real. The sample
-      #is stored in its folder with 
       if result:
         box = result[0]['box']
         x, y, w, h = box[0], box[1], box[2], box[3]
@@ -96,8 +150,7 @@ def process_single_video(full_video_path : str, label : str):
   except Exception as e:
     print(f"error: {e}")
     exit()
-
-
+  '''
 
 def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : storage.Client.bucket):
   try:
