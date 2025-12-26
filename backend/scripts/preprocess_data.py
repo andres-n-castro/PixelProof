@@ -211,7 +211,7 @@ if __name__ == "__main__":
     
     options = FaceDetectorOptions(
     base_options=BaseOptions(model_asset_path=os.path.join(kaggle_work_dir, face_detect_model)),
-    running_mode=VisionRunningMode.Image)
+    running_mode=VisionRunningMode.IMAGE)
 
     print("downloading csv.zip file from bucket...")
     blob = bucket.blob(blob_name=master_csv_path)
