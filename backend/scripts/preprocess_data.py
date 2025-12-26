@@ -14,7 +14,7 @@ FaceDetector = vision.FaceDetector
 FaceDetectorOptions = vision.FaceDetectorOptions
 VisionRunningMode = vision.RunningMode
   
-def process_single_video(full_video_path : str, label : str):
+def process_single_video(full_video_path, label, detector):
 
   try:
     parsed_video = full_video_path.split('/')
@@ -46,91 +46,90 @@ def process_single_video(full_video_path : str, label : str):
 
   #mediapipe implementation (current supported API --> Face Detector)
   try:
-    with FaceDetector.create_from_options(options) as detector:
-      for current_frame in range(20):
-        frame_idx = current_frame * frame_step
-        cv_video.set(cv.CAP_PROP_POS_FRAMES, frame_idx)
+    for current_frame in range(20):
+      frame_idx = current_frame * frame_step
+      cv_video.set(cv.CAP_PROP_POS_FRAMES, frame_idx)
 
-        success, frame = cv_video.read()
+      success, frame = cv_video.read()
 
-        if not success:
-          print("failed to retrieve frame, returning and moving to next video file!")
+      if not success:
+        print("failed to retrieve frame, returning and moving to next video file!")
+        return []
+
+      #create a copy of the frame to pass to media pipe so you dont have to convert back to
+      #RGB when you load back into cv later
+      frame_copy = frame.copy()
+      result = detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=cv.cvtColor(frame_copy, cv.COLOR_BGR2RGB)))
+
+      if not result.detections:
+        continue
+      
+      if len(result.detections) > 1:
+        largest_face_idx, largest_face_area = 0, 0
+        for idx, detection in enumerate(result.detections):
+          cur_face_area = detection.bounding_box.width * detection.bounding_box.height
+          if largest_face_area < cur_face_area:
+            largest_face_idx, largest_face_area = idx, cur_face_area
+          else: continue
+        
+        chosen_face_frame = result.detections[largest_face_idx]
+        frame_h, frame_w, _ = frame.shape
+
+        #checks to see if the bouding box origin coords are negative i.e outside of the frame --> returns 0 if it is
+        crop_origin_x = int(max(0, chosen_face_frame.bounding_box.origin_x))
+        crop_origin_y = int(max(0, chosen_face_frame.bounding_box.origin_y))
+
+        #checks to see if width/height of face is greater than width/height of frame
+        min_width = min(frame_w, crop_origin_x + int(chosen_face_frame.bounding_box.width))
+        min_height = min(frame_h, crop_origin_y + int(chosen_face_frame.bounding_box.height))
+
+        if (min_width - crop_origin_x > 0) and (min_height - crop_origin_y > 0):
+          cropped_frame = frame[crop_origin_y : min_height, crop_origin_x : min_width]
+          resized_cropped_frame = cv.resize(cropped_frame, (256, 256))
+        else:
+          print("could not crop frame in order to obtain a face!")
           return []
 
-        #create a copy of the frame to pass to media pipe so you dont have to convert back to
-        #RGB when you load back into cv later
-        frame_copy = frame.copy()
-        result = detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=cv.cvtColor(frame_copy, cv.COLOR_BGR2RGB)))
-
-        if not result.detections:
-          continue
-        
-        if len(result.detections) > 1:
-          largest_face_idx, largest_face_area = 0, 0
-          for idx, detection in enumerate(result.detections):
-            cur_face_area = detection.bounding_box.width * detection.bounding_box.height
-            if largest_face_area < cur_face_area:
-              largest_face_idx, largest_face_area = idx, cur_face_area
-            else: continue
-          
-          chosen_face_frame = result.detections[largest_face_idx]
+      else:
+        for detection in result.detections:
           frame_h, frame_w, _ = frame.shape
 
           #checks to see if the bouding box origin coords are negative i.e outside of the frame --> returns 0 if it is
-          crop_origin_x = int(max(0, chosen_face_frame.bounding_box.origin_x))
-          crop_origin_y = int(max(0, chosen_face_frame.bounding_box.origin_y))
+          crop_origin_x = int(max(0, detection.bounding_box.origin_x))
+          crop_origin_y = int(max(0, detection.bounding_box.origin_y))
 
-          #checks to see if width/height of face is greater than width/height of frame
-          min_width = min(frame_w, crop_origin_x + int(chosen_face_frame.bounding_box.width))
-          min_height = min(frame_h, crop_origin_y + int(chosen_face_frame.bounding_box.height))
+          #checks to see if width/height of face is supercedes the width/height of frame
+          min_width = min(frame_w, crop_origin_x + int(detection.bounding_box.width))
+          min_height = min(frame_h, crop_origin_y + int(detection.bounding_box.height))
 
-          if (min_width - crop_origin_x > 0) and (min_height - crop_origin_y > 0):
+          if (min_width - crop_origin_x > 0)  and (min_height - crop_origin_y > 0):
             cropped_frame = frame[crop_origin_y : min_height, crop_origin_x : min_width]
             resized_cropped_frame = cv.resize(cropped_frame, (256, 256))
           else:
             print("could not crop frame in order to obtain a face!")
             return []
+        
+      if label == 'REAL':
+        filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
 
+        success, frame_buffer = cv.imencode(".png", resized_cropped_frame)
+        if success:
+          frames.append((frame_buffer.tobytes(), filename))
         else:
-          for detection in result.detections:
-            frame_h, frame_w, _ = frame.shape
+          print("writing frame to memory was unsuccessfull!")
+          return []
 
-            #checks to see if the bouding box origin coords are negative i.e outside of the frame --> returns 0 if it is
-            crop_origin_x = int(max(0, detection.bounding_box.origin_x))
-            crop_origin_y = int(max(0, detection.bounding_box.origin_y))
-
-            #checks to see if width/height of face is supercedes the width/height of frame
-            min_width = min(frame_w, crop_origin_x + int(detection.bounding_box.width))
-            min_height = min(frame_h, crop_origin_y + int(detection.bounding_box.height))
-
-            if (min_width - crop_origin_x > 0)  and (min_height - crop_origin_y > 0):
-              cropped_frame = frame[crop_origin_y : min_height, crop_origin_x : min_width]
-              resized_cropped_frame = cv.resize(cropped_frame, (256, 256))
-            else:
-              print("could not crop frame in order to obtain a face!")
-              return []
-          
-        if label == 'REAL':
-          filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
-
-          success, frame_buffer = cv.imencode(".png", resized_cropped_frame)
-          if success:
-            frames.append((frame_buffer.tobytes(), filename))
-          else:
-            print("writing frame to memory was unsuccessfull!")
-            return []
-
-        elif label == 'FAKE':
-          filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
-          
-          success, frame_buffer = cv.imencode(".png", resized_cropped_frame)
-          if success:
-            frames.append((frame_buffer.tobytes(), filename))
-          else:
-            print("writing frame to memory was unsuccessfull!")
-            return []
+      elif label == 'FAKE':
+        filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
+        
+        success, frame_buffer = cv.imencode(".png", resized_cropped_frame)
+        if success:
+          frames.append((frame_buffer.tobytes(), filename))
         else:
-          continue
+          print("writing frame to memory was unsuccessfull!")
+          return []
+      else:
+        continue
   
     cv_video.release()
     return frames
@@ -142,30 +141,31 @@ def process_single_video(full_video_path : str, label : str):
 def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : Bucket):
   try:
     print("creating real_frames.zip and fake_frames.zip and opening them for writing...")
-    with ZipFile("real_frames.zip", 'w') as real_zip, ZipFile("fake_frames.zip", 'w') as fake_zip:
-      print("iterating through master.csv...\n")
-      for row in master_df[['File Path', 'Label']].itertuples(name=None):
-        if row[2] == "REAL":
-          print("found an original video file!")
-          full_video_path = os.path.join(input_dir, row[1])
-          print("processing original video file..\n")
-          frames = process_single_video(full_video_path, row[2])
+    with FaceDetector.create_from_options(options) as detector:
+      with ZipFile("real_frames.zip", 'w') as real_zip, ZipFile("fake_frames.zip", 'w') as fake_zip:
+        print("iterating through master.csv...\n")
+        for row in master_df[['File Path', 'Label']].itertuples(name=None):
+          if row[2] == "REAL":
+            print("found an original video file!")
+            full_video_path = os.path.join(input_dir, row[1])
+            print("processing original video file..\n")
+            frames = process_single_video(full_video_path, row[2], detector)
 
-          for frame_info in frames:
-            real_zip.writestr(frame_info[1], frame_info[0])
+            for frame_info in frames:
+              real_zip.writestr(frame_info[1], frame_info[0])
 
-        elif row[2] == "FAKE":
-          print("found an deepfake video file!")
-          full_video_path = os.path.join(input_dir, row[1])
-          print("processing deepfake video file..\n")
-          frames = process_single_video(full_video_path, row[2])
+          elif row[2] == "FAKE":
+            print("found an deepfake video file!")
+            full_video_path = os.path.join(input_dir, row[1])
+            print("processing deepfake video file..\n")
+            frames = process_single_video(full_video_path, row[2], detector)
 
-          for frame_info in frames:
-            fake_zip.writestr(frame_info[1], frame_info[0])
-        
-        else:
-          print("label not REAL or FAKE, continuing to next row/sample in csv")
-          continue
+            for frame_info in frames:
+              fake_zip.writestr(frame_info[1], frame_info[0])
+          
+          else:
+            print("label not REAL or FAKE, continuing to next row/sample in csv")
+            continue
 
     print("uploading real_frames.zip...")
     blob_name = "processed_real/real_frames.zip"
