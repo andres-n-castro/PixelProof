@@ -2,28 +2,18 @@
 import os
 import cv2 as cv
 import mediapipe as mp
-from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import argparse
 from google.cloud import storage
 from zipfile import ZipFile
 import pandas as pd
+from google.cloud.storage import Bucket
 
 BaseOptions = mp.tasks.BaseOptions
 FaceDetector = vision.FaceDetector
 FaceDetectorOptions = vision.FaceDetectorOptions
 VisionRunningMode = vision.RunningMode
-
-options = FaceDetectorOptions(
-  base_options=BaseOptions(model_asset_path='path/to.model.task'),
-  running_mode=VisionRunningMode.Image)
-
-def normalized_to_pixel_coords(norm_x, norm_y, x_w, y_h):
-  pixel_coord_x = int(norm_x * x_w)
-  pixel_coord_y = int(norm_y * y_h)
-  return (pixel_coord_x, pixel_coord_y)
   
-
 def process_single_video(full_video_path : str, label : str):
 
   try:
@@ -48,11 +38,11 @@ def process_single_video(full_video_path : str, label : str):
     
     else:
       print("videocapture failed to create object")
-      exit()
+      return []
   
   except Exception as e:
     print(f"error: {e}")
-    exit()
+    return []
 
   #mediapipe implementation (current supported API --> Face Detector)
   try:
@@ -70,7 +60,7 @@ def process_single_video(full_video_path : str, label : str):
         #create a copy of the frame to pass to media pipe so you dont have to convert back to
         #RGB when you load back into cv later
         frame_copy = frame.copy()
-        result = detector.detect(cv.cvtColor(frame_copy, cv.COLOR_BGR2RGB))
+        result = detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=cv.cvtColor(frame_copy, cv.COLOR_BGR2RGB)))
 
         if not result.detections:
           continue
@@ -78,81 +68,78 @@ def process_single_video(full_video_path : str, label : str):
         if len(result.detections) > 1:
           largest_face_idx, largest_face_area = 0, 0
           for idx, detection in enumerate(result.detections):
-            cur_face_area = detection['BoundingBox'].width * detection['BoundingBox'].height
-            if max(largest_face_area, cur_face_area) == cur_face_area:
+            cur_face_area = detection.bounding_box.width * detection.bounding_box.height
+            if largest_face_area < cur_face_area:
               largest_face_idx, largest_face_area = idx, cur_face_area
             else: continue
+          
+          chosen_face_frame = result.detections[largest_face_idx]
+          frame_h, frame_w, _ = frame.shape
 
-            chosen_face_frame = result.detections[f"Detection #{largest_face_idx}"]
+          #checks to see if the bouding box origin coords are negative i.e outside of the frame --> returns 0 if it is
+          crop_origin_x = int(max(0, chosen_face_frame.bounding_box.origin_x))
+          crop_origin_y = int(max(0, chosen_face_frame.bounding_box.origin_y))
 
+          #checks to see if width/height of face is greater than width/height of frame
+          min_width = min(frame_w, crop_origin_x + int(chosen_face_frame.bounding_box.width))
+          min_height = min(frame_h, crop_origin_y + int(chosen_face_frame.bounding_box.height))
+
+          if (min_width - crop_origin_x > 0) and (min_height - crop_origin_y > 0):
+            cropped_frame = frame[crop_origin_y : min_height, crop_origin_x : min_width]
+            resized_cropped_frame = cv.resize(cropped_frame, (256, 256))
+          else:
+            print("could not crop frame in order to obtain a face!")
+            return []
 
         else:
-          for face_frame in result.detections:
-            x_w, y_h = frame.shape
+          for detection in result.detections:
+            frame_h, frame_w, _ = frame.shape
 
+            #checks to see if the bouding box origin coords are negative i.e outside of the frame --> returns 0 if it is
+            crop_origin_x = int(max(0, detection.bounding_box.origin_x))
+            crop_origin_y = int(max(0, detection.bounding_box.origin_y))
 
+            #checks to see if width/height of face is supercedes the width/height of frame
+            min_width = min(frame_w, crop_origin_x + int(detection.bounding_box.width))
+            min_height = min(frame_h, crop_origin_y + int(detection.bounding_box.height))
 
+            if (min_width - crop_origin_x > 0)  and (min_height - crop_origin_y > 0):
+              cropped_frame = frame[crop_origin_y : min_height, crop_origin_x : min_width]
+              resized_cropped_frame = cv.resize(cropped_frame, (256, 256))
+            else:
+              print("could not crop frame in order to obtain a face!")
+              return []
+          
+        if label == 'REAL':
+          filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
+
+          success, frame_buffer = cv.imencode(".png", resized_cropped_frame)
+          if success:
+            frames.append((frame_buffer.tobytes(), filename))
+          else:
+            print("writing frame to memory was unsuccessfull!")
+            return []
+
+        elif label == 'FAKE':
+          filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
+          
+          success, frame_buffer = cv.imencode(".png", resized_cropped_frame)
+          if success:
+            frames.append((frame_buffer.tobytes(), filename))
+          else:
+            print("writing frame to memory was unsuccessfull!")
+            return []
+        else:
+          continue
+  
+    cv_video.release()
+    return frames
 
   except Exception as e:
     print(f"error: {e}")
     return []
-  
-  '''
-  try:
-    #loops through all 20 frames in a video since for each video we are extracting 20 frames
-    for current_frame in range(20):
-      
-      frame_index = current_frame * frame_step # index for the current frame we want 
-      cv_video.set(cv.CAP_PROP_POS_FRAMES, frame_index) #sets the VideoCapture var cv_video to capture video[frame_index]
-      success, frame = cv_video.read() #processes the frame at frame_index and retrieve frame information as a well as return a value if it was successfull or not
 
-      if success == False:
-        print("failed to retrieve frame from video, returning and moving to next video file")
-        return []
-
-      #changes the channels from BGR to RGB so that mtcnn can detect faces (mtcnn requires RBG and opencv process in BGR)
-      image = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-
-      result = mtcnn.detect_faces(image) #mtcnn retrieves any faces within the frame information
-
-      if result:
-        box = result[0]['box']
-        x, y, w, h = box[0], box[1], box[2], box[3]
-        x, y, = max(0, x), max(0, y) #ensures the coordinates cannot be negative in the case that the bounding box captures a face oustide the bounds of the orig frame size
-
-        face_frame = frame[y : y + h, x : x + w] # obtains the face within the frame using the bounding box coords
-
-        if face_frame.size != 0:
-      
-          resized_face_frame = cv.resize(face_frame, (256, 256)) #resizes face frame
-
-          if label == 'REAL':
-            filename = f"{video_id}_frame_{current_frame}_dataset_real.png"
-
-            success, frame_buffer = cv.imencode(".png", resized_face_frame)
-            if success:
-              frames.append((frame_buffer.tobytes(), filename))
-            else:
-              print("writing frame to memory was unsuccessfull!")
-              return []
-
-          else:
-            filename = f"{video_id}_frame_{current_frame}_dataset_fake.png"
-            
-            success, frame_buffer = cv.imencode(".png", resized_face_frame)
-            if success:
-              frames.append((frame_buffer.tobytes(), filename))
-            else:
-              print("writing frame to memory was unsuccessfull!")
-              return []
-          
-    return frames
-  except Exception as e:
-    print(f"error: {e}")
-    exit()
-  '''
-
-def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : storage.Client.bucket):
+def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : Bucket):
   try:
     print("creating real_frames.zip and fake_frames.zip and opening them for writing...")
     with ZipFile("real_frames.zip", 'w') as real_zip, ZipFile("fake_frames.zip", 'w') as fake_zip:
@@ -195,7 +182,7 @@ def obtain_face_frames(input_dir : str, master_df : pd.DataFrame, bucket : stora
 
   except Exception as e:
     print(f"error: {e}")
-    exit()
+    return
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="finds the required dataset")
@@ -203,17 +190,28 @@ if __name__ == "__main__":
   parser.add_argument("bucket_name", metavar="gcs bucket", type=str, help="arg for gcs bucket name")
   parser.add_argument("project_id", metavar="proj_id", type=str, help="the project id in order to access the project and then the bucket within")
   parser.add_argument("master_path", metavar="master_csv_path", type=str)
+  parser.add_argument("blaze_model", metavar="face_model", type=str, help="name of the face detection model")
 
   args = parser.parse_args()
   bucket_name = args.bucket_name
   input_dir = args.kaggle_input_dir
   proj_id = args.project_id
   master_csv_path = args.master_path
+  face_detect_model = args.blaze_model
   kaggle_work_dir = '../../../'
 
   try:
     storage_client = storage.Client(proj_id)
     bucket = storage_client.bucket(bucket_name=bucket_name)
+
+    print("retrieving face detect model..")
+    blob = bucket.blob(blob_name=os.path.join("FaceDetector_Model", face_detect_model))
+    blob.download_to_filename(os.path.join(kaggle_work_dir, face_detect_model))
+    print("face detect model successfully retrieved!")
+    
+    options = FaceDetectorOptions(
+    base_options=BaseOptions(model_asset_path=os.path.join(kaggle_work_dir, face_detect_model)),
+    running_mode=VisionRunningMode.Image)
 
     print("downloading csv.zip file from bucket...")
     blob = bucket.blob(blob_name=master_csv_path)
@@ -229,5 +227,3 @@ if __name__ == "__main__":
   
   except Exception as e:
     print(f"error: {e}")
-    exit()
-
