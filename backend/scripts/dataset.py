@@ -4,41 +4,30 @@ import os
 import cv2 as cv
 import random as rand
 from torch.utils.data import Dataset, DataLoader
+from pandas import DataFrame
+import zipfile as zp
+from zipfile import ZipFile
 
 REAL_FOLDER = "Processed Real"
 FAKE_FOLDER = "Processed Fake"
 
-'''
-def videos_dataset_creation(root_dir, labels : list[tuple[str, int], tuple[str, int]]):
-  videos = []
-  for label in labels:
-    temp_videos = set()
-    frames = os.listdir(os.path.join(root_dir, label[0]))
-    for frame in frames:
-      frame_name_items = frame.split("_frame_")
-      video_id = frame_name_items[0]
-      if video_id not in temp_videos:
-        temp_videos.add(video_id)
-        videos.append((video_id, label[1]))
-
-  rand.shuffle(videos)
-
-  return videos
-'''
 #custom dataset
 class DeepFakeDataset(Dataset):
-  def __init__(self, sequence_length, root_dir, dataset,transforms=None):
-    self.root_dir = root_dir
+  def __init__(self, sequence_length : int, master_df : DataFrame, real_zip : ZipFile, fake_zip : ZipFile, transforms=None):
     self.sequence_length = sequence_length
     self.transforms = transforms
-    self.dataset = dataset
+    self.master_df = master_df
+    self.real_zip = real_zip
+    self.fake_zip = fake_zip
 
+  #returns # of rows in the master dataframe
   def __len__(self):
-    return len(self.dataset)
+    return len(self.master_df)
 
+  #idx is a row in the dataframe
   def __getitem__(self, idx):
     try:
-      video_id, label  = self.dataset[idx]
+      video_id, label  = self.master_df.iloc[idx, :]
       sample = []
 
       for i in range(self.sequence_length):
