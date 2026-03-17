@@ -1,4 +1,4 @@
-from model import DeepfakeDetector
+from backend.app.scripts.model import DeepfakeDetector
 from train_model import evaluate_model
 import os
 import torch

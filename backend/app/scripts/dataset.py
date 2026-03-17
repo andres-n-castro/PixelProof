@@ -3,7 +3,7 @@ import PIL
 import os
 import cv2 as cv
 import random as rand
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from pandas import DataFrame
 import zipfile as zp
 from zipfile import ZipFile
@@ -11,14 +11,14 @@ from zipfile import ZipFile
 REAL_FOLDER = "Processed Real"
 FAKE_FOLDER = "Processed Fake"
 
-#custom dataset
+#custom dataset that only opens zip per instantiation, use ConcatDataset in order to handle both zips
 class DeepFakeDataset(Dataset):
-  def __init__(self, sequence_length : int, master_df : DataFrame, real_zip : ZipFile, fake_zip : ZipFile, transforms=None):
+  def __init__(self, sequence_length : int, master_df : DataFrame, zip_file : ZipFile, transforms=None):
     self.sequence_length = sequence_length
     self.transforms = transforms
     self.master_df = master_df
-    self.real_zip = real_zip
-    self.fake_zip = fake_zip
+    self.zip_file = zip_file
+    self.handle_zip = None
 
   #returns # of rows in the master dataframe
   def __len__(self):
@@ -26,8 +26,15 @@ class DeepFakeDataset(Dataset):
 
   #idx is a row in the dataframe
   def __getitem__(self, idx):
+
     try:
-      video_id, label  = self.master_df.iloc[idx, :]
+
+      if self.handle_zip == None:
+        self.handle_zip = ZipFile(self.zip_file, 'r')
+
+      video_id_path , label  = self.master_df.iloc[idx, :]
+      video_id_path_substrings = video_id_path.split('/')
+      video_id = video_id_path_substrings[-1]
       sample = []
 
       for i in range(self.sequence_length):

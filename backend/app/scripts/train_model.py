@@ -7,7 +7,7 @@ import torch.optim as optim
 import torchvision.transforms as transforms
 import torchvision.models as models
 from dataset import videos_dataset_creation, DeepFakeDataset, DataLoader
-from model import DeepfakeDetector
+from backend.app.scripts.model import DeepfakeDetector
 
 def train_one_epoch(model, loader, optimizer, criterion):
   model.train()
@@ -106,7 +106,6 @@ if __name__ == "__main__":
 
   #compose for data preprocessing
   compose = transforms.Compose([
-    transforms.Resize(224),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
   ])
@@ -134,7 +133,7 @@ if __name__ == "__main__":
     train_dataset,
     batch_size=args.batch_size,
     shuffle=True,
-    num_workers=2,
+    num_workers=4,
     pin_memory=True,
     drop_last=True
   )
@@ -143,7 +142,7 @@ if __name__ == "__main__":
     val_dataset,
     batch_size=args.batch_size,
     shuffle=False,
-    num_workers=2,
+    num_workers=4,
     pin_memory=True
   )
 
