@@ -1,5 +1,4 @@
 import torch
-import pickle
 import cv2 as cv
 import numpy as np
 import mediapipe as mp
@@ -7,17 +6,58 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import argparse
 import os
-from typing import any
+from typing import Any
 
 #TODO
-def prepare_face_crop(face_bb: any, margin_hyperparam) -> list[int]:
-  return 
+def prepare_face_crop(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple) -> list[int]:
+  expanded_face_bb = margin_expansion(orig_bb, margin_hyperparam, frame_shape)
+  
+  #resize face_bb into a square
+  if expanded_face_bb[2] < expanded_face_bb[3]:
+    center_x = (expanded_face_bb[2] / 2) + expanded_face_bb[0]
+    new_width = expanded_face_bb[3]
 
-def process_videos(n_frames: int, std_img_size: tuple[int,int], samples_dest_dir: str, data_srce_dir: str, label: int, margin_hyperparam: int) -> None:
-  sample_count = 0
+    final_origin_x = max(0, int(center_x - new_width / 2))
+    final_width = min(new_width, frame_shape[1] - final_origin_x)
+
+    return [final_origin_x, expanded_face_bb[1], final_width, expanded_face_bb[3]]
+  
+  elif expanded_face_bb[2] > expanded_face_bb[3]:
+    center_y = (expanded_face_bb[3] / 2) + expanded_face_bb[1]
+    new_height = expanded_face_bb[2]
+
+    final_origin_y = max(0, int(center_y - new_height / 2))
+    final_height = min(new_height, frame_shape[0] - final_origin_y)
+
+    return [expanded_face_bb[0], final_origin_y, expanded_face_bb[2], final_height]
+  
+  else: return expanded_face_bb
+
+def margin_expansion(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple) -> list[int]:
+  center_x = (orig_bb.width / 2) + orig_bb.origin_x
+  center_y = (orig_bb.height / 2) + orig_bb.origin_y
+
+  new_width = orig_bb.width * (1 + margin_hyperparam)
+  new_height = orig_bb.height * (1 + margin_hyperparam)
+
+  new_origin_x = int(center_x - (new_width / 2))
+  new_origin_y = int(center_y - (new_height / 2))
+
+  final_origin_x = max(0, new_origin_x)
+  final_origin_y = max(0, new_origin_y)
+  final_width = min(new_width, frame_shape[1] - final_origin_x)
+  final_height = min(new_height, frame_shape[0] - final_origin_y)
+
+  return [final_origin_x, final_origin_y, int(final_width), int(final_height)]
+
+def process_videos(n_frames: int, std_img_size: tuple[int,int], samples_dest_dir: str, data_srce_dir: str, label: int, margin_hyperparam: float) -> None:
+
+  #load in mediapipe detector
   base_options = python.BaseOptions(model_asset_path='detector.tflite')
   options = vision.FaceDetectorOptions(base_options=base_options)
   detector = vision.FaceDetector.create_from_options(options)
+
+  sample_count = 0
   video_count = 0
   video_file_names = os.listdir(data_srce_dir)
 
@@ -25,17 +65,16 @@ def process_videos(n_frames: int, std_img_size: tuple[int,int], samples_dest_dir
     video_count += 1
 
     video_path = os.path.join(data_srce_dir, video)
-    sample_tuple = process_single_video(video_name=video, video_path=video_path, n_frames=n_frames, detector=detector, margin_hyperparam=margin_hyperparam, std_img_size=std_img_size)
+    sample_tuple = process_single_video(video_name=video, video_path=video_path, n_frames=n_frames, detector=detector, margin_hyperparam=margin_hyperparam, std_img_size=std_img_size )
 
 
     if not sample_tuple:
-      if video_count % 80 == 0:
-        print(f"processed video: {video_count} but sample had no faces so it will not be used!")
+      print(f"video: {video_count} could not not be used!")
       continue
 
     #create sample tuple
     sample_count += 1
-    sample = {"frame_tensor": sample_tuple[0],
+    sample = {"frames": sample_tuple[0],
               "valid_frame_count": sample_tuple[1],
               "video_name": video,
               "label": label
@@ -43,16 +82,14 @@ def process_videos(n_frames: int, std_img_size: tuple[int,int], samples_dest_dir
 
     #serialize sample dictionary using pickle
     #add serialized sample to samples_dest_dir folder
-    with open(os.path.join(samples_dest_dir, f"sample_{sample_count}")) as file:
-      pickle.dump(sample, protocol=pickle.HIGHEST_PROTOCOL, file=file)
+    torch.save(sample, os.path.join(samples_dest_dir, f"sample_{sample_count}.pt"))
     
     if video_count % 80 == 0:
         print(f"processed video: {video_count} and successfully uploaded sample!")
   
   return None
 
-
-def process_single_video(video_name: str, video_path: str, n_frames: int, detector: any, margin_hyperparam: int, std_img_size: tuple[int, int]) -> tuple[torch.Tensor, int] | None:
+def process_single_video(video_name: str, video_path: str, n_frames: int, detector: Any, margin_hyperparam: float, std_img_size: tuple[int, int]) -> tuple[torch.Tensor, int] | None:
   frame_tensor_list = []
   loaded_video = cv.VideoCapture(video_path)
   contains_face = False
@@ -60,21 +97,27 @@ def process_single_video(video_name: str, video_path: str, n_frames: int, detect
 
   if not loaded_video.isOpened():
     print(f"Error: could not open {video_name}")
-    return
+    loaded_video.release()
+    return None
   
   video_frame_count = int(loaded_video.get(cv.CAP_PROP_FRAME_COUNT))
-  frame_idx = video_frame_count//n_frames
 
-  for idx in range(1, video_frame_count+1):
+  if video_frame_count < n_frames:
+    loaded_video.release()
+    return None
+
+  frame_idxs = set(np.linspace(0, video_frame_count-1, n_frames, dtype=int))
+
+  for idx in range(video_frame_count):
     ret, img = loaded_video.read()
-    rbg_img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 
-    #checks if frame if a valid nth frame to use
-    if idx % frame_idx != 0:
+    if not ret or idx not in frame_idxs:
       continue
 
+    rgb_img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+
     #use mediapipe to detect faces
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rbg_img)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_img)
     result = detector.detect(mp_image)
 
     #checks to see if current vido contains a frame that has a face
@@ -86,7 +129,7 @@ def process_single_video(video_name: str, video_path: str, n_frames: int, detect
       largest_face_area = 0
       largest_face_idx = -1
       for idx, detection in enumerate(result.detections):
-        current_face_area = (detection.bounding_box.width - detection.bounding_box.origin_x) * (detection.bounding_box.height - detection.bounding_box.origin_y)
+        current_face_area = detection.bounding_box.width * detection.bounding_box.height
         if current_face_area > largest_face_area:
           largest_face_area = current_face_area
           largest_face_idx = idx
@@ -95,20 +138,27 @@ def process_single_video(video_name: str, video_path: str, n_frames: int, detect
       largest_face_bb = largest_face.bounding_box
 
 
-      new_face_bb = prepare_face_crop(largest_face_bb, margin_hyperparam=margin_hyperparam)
+      new_face_bb = prepare_face_crop(largest_face_bb, margin_hyperparam=margin_hyperparam, frame_shape=rgb_img.shape)
 
-      #extract face from frame using new bounding box
+      #redo the extraction
+      #obtain corner coordinates for the face using new B.B.
       orig_x = new_face_bb[0]
-      width = new_face_bb[1]
-      orig_y = new_face_bb[2]
-      height = new_face_bb[3]
-      face_frame = img[orig_y:height+1, orig_x:width+1]
+      orig_y = new_face_bb[1]
+
+      second_x = orig_x +new_face_bb[2] 
+      second_y = orig_y + new_face_bb[3]
+
+      #extracted face frame
+      face_frame = rgb_img[orig_y:second_y, orig_x:second_x]
+
+      if face_frame.size == 0:
+          continue
 
       #resizes using inter cubic interpolation for upsampling (making the face frame bigger) since its much smoother than linear interpolation
       resized_face_frame = cv.resize(face_frame, std_img_size, interpolation=cv.INTER_CUBIC)
 
       #convert face frame into tensor
-      face_tensor = torch.from_numpy(resized_face_frame)
+      face_tensor = torch.from_numpy(resized_face_frame).permute(2, 0, 1).float() / 255.0
 
       #append tensor to list
       frame_tensor_list.append(face_tensor)
@@ -116,24 +166,31 @@ def process_single_video(video_name: str, video_path: str, n_frames: int, detect
     #case where there are no faces in frame now check if there is a valid previous face to use, if not then continue
     else:
       continue
-  
+
+  #unload the current video after preprocessing on it is done
+  loaded_video.release()
+
+  if contains_face and len(frame_tensor_list) > 0:
     #pads the tensor list with the last tensor obtained in the case that there were < n_frame tensors retieved from the video
     #ensures all frame tensors contain the same shape before stacking
     while len(frame_tensor_list) < n_frames:
       frame_tensor_list.append(frame_tensor_list[-1])
       
     #convert list of tensors into stack of tensors
-    return tuple(torch.stack(frame_tensor_list), valid_face_count)
+    return (torch.stack(frame_tensor_list).contiguous(), valid_face_count)
+  else:
+    return None
+  
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser
+  parser = argparse.ArgumentParser()
   parser.add_argument("num_frames", metavar="number_frames_per_video", type=int, help="int that decides the number of frames to extract from a video")
   parser.add_argument("std_img_size", metavar="standardized_image_size", type=int, help="is the standard image size for the frame tensors")
   parser.add_argument("real_data_srce_dir", metavar="real_data_source_diretory", type=str, help="the source directory for the original dataset")
   parser.add_argument("fake_data_srce_dir", metavar="fake_data_source_diretory", type=str, help="the source directory for the deepfake dataset")
   parser.add_argument("real_samples_dest_dir", metavar="real_samples_destination_directory", type=str, help="the destination directory for the preprocessed original samples")
   parser.add_argument("fake_samples_dest_dir", metavar="fake_samples_destination_directory", type=str, help="the destination directory for the preprocessed fake samples")
-  parser.add_argument("margin_hyperparam", metavar="margin_hyperparameter", type=int, help="is the tuned hyperparameter for margin expansion on the retrieved largest face bounding box")
+  parser.add_argument("margin_hyperparam", metavar="margin_hyperparameter", type=float, help="is the tuned hyperparameter for margin expansion on the retrieved largest face bounding box")
   
 
 
@@ -149,15 +206,15 @@ if __name__ == "__main__":
 
   try:
     #for real dataset
-    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=real_samples_dest_dir, data_srce_dir=real_data_srce_dir, margin_hyperparam=margin_hyperparam, label=0)
+    process_videos(n_frames=num_frames, std_img_size=(std_img_size, std_img_size), samples_dest_dir=real_samples_dest_dir, data_srce_dir=real_data_srce_dir, margin_hyperparam=margin_hyperparam, label=0)
     print("finished processing original video files\n")
   
     #for deepfake dataset
-    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=fake_samples_dest_dir, data_srce_dir=fake_data_srce_dir, margin_hyperparam=margin_hyperparam)
+    process_videos(n_frames=num_frames, std_img_size=(std_img_size, std_img_size), samples_dest_dir=fake_samples_dest_dir, data_srce_dir=fake_data_srce_dir, margin_hyperparam=margin_hyperparam, label=1)
     print("finished processing deepfake video files\n")
 
   except Exception as e:
     print(f"error: {e}")
-    exit
+    exit()
   
 
