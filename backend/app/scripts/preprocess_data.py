@@ -41,11 +41,11 @@ def init_worker(worker_n_frames: int, worker_label: int, worker_samples_dest_dir
 
   print("Mediapipe Face Detector Initialized!")
 
-def process_videos(data_srce_dir: str, n_frames: int, label: int, samples_dest_dir: str, margin_hyperparam: float, std_img_size: int) -> None:
+def process_videos(data_srce_dir: str, n_frames: int, label: int, samples_dest_dir: str, margin_hyperparam: float, std_img_size: int, num_workers: int) -> None:
 
   video_file_names = [file for file in os.listdir(data_srce_dir) if file.endswith(".mp4")]
   
-  with Pool(processes=5, initializer=init_worker, initargs=(n_frames, label, samples_dest_dir, data_srce_dir, margin_hyperparam, std_img_size) ) as p:
+  with Pool(processes=num_workers, initializer=init_worker, initargs=(n_frames, label, samples_dest_dir, data_srce_dir, margin_hyperparam, std_img_size) ) as p:
     p.map(process_single_video, video_file_names)
   
   return None
@@ -207,6 +207,7 @@ if __name__ == "__main__":
   parser.add_argument("real_samples_dest_dir", metavar="real_samples_destination_directory", type=str, help="the destination directory for the preprocessed original samples")
   parser.add_argument("fake_samples_dest_dir", metavar="fake_samples_destination_directory", type=str, help="the destination directory for the preprocessed fake samples")
   parser.add_argument("margin_hyperparam", metavar="margin_hyperparameter", type=float, help="is the tuned hyperparameter for margin expansion on the retrieved largest face bounding box")
+  parser.add_argument("num_workers", metavar="number of worker processes", type=int, help="int that determines the number of workers to be pooled in the Pool() constructor")
   
 
 
@@ -218,11 +219,12 @@ if __name__ == "__main__":
   fake_data_srce_dir = args.fake_data_srce_dir
   fake_samples_dest_dir = args.fake_samples_dest_dir
   margin_hyperparam = args.margin_hyperparam
+  num_workers = args.num_workers
 
 
   try:
     #for real dataset
-    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=real_samples_dest_dir, data_srce_dir=real_data_srce_dir, margin_hyperparam=margin_hyperparam, label=0)
+    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=real_samples_dest_dir, data_srce_dir=real_data_srce_dir, margin_hyperparam=margin_hyperparam, label=0, num_workers=num_workers)
     print("finished processing original video files\n")
   except Exception as e:
     print(f"error: {e}")
@@ -230,7 +232,7 @@ if __name__ == "__main__":
   
   try:
     #for deepfake dataset
-    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=fake_samples_dest_dir, data_srce_dir=fake_data_srce_dir, margin_hyperparam=margin_hyperparam, label=1)
+    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=fake_samples_dest_dir, data_srce_dir=fake_data_srce_dir, margin_hyperparam=margin_hyperparam, label=1, num_workers=num_workers)
     print("finished processing deepfake video files\n")
   except Exception as e:
     print(f"error: {e}")
