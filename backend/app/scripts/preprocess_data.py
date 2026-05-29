@@ -7,90 +7,54 @@ from mediapipe.tasks.python import vision
 import argparse
 import os
 from typing import Any
+from multiprocessing import Pool
 
-#TODO
-def prepare_face_crop(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple) -> list[int]:
-  expanded_face_bb = margin_expansion(orig_bb, margin_hyperparam, frame_shape)
-  
-  #resize face_bb into a square
-  if expanded_face_bb[2] < expanded_face_bb[3]:
-    center_x = (expanded_face_bb[2] / 2) + expanded_face_bb[0]
-    new_width = expanded_face_bb[3]
+detector = None
+n_frames = None
+label = None
+samples_dest_dir = None
+data_srce_dir = None
+margin_hyperparam = None
+std_img_size = None
 
-    final_origin_x = max(0, int(center_x - new_width / 2))
-    final_width = min(new_width, frame_shape[1] - final_origin_x)
+#create a initialization function for a worker to call when its instantiated
+def init_worker(worker_n_frames: int, worker_label: int, worker_samples_dest_dir: str, worker_data_srce_dir: str, worker_margin_hyperparam: float, worker_std_img_size: int):
+  global detector
+  global n_frames
+  global label
+  global samples_dest_dir
+  global data_srce_dir
+  global std_img_size
+  global margin_hyperparam
 
-    return [final_origin_x, expanded_face_bb[1], final_width, expanded_face_bb[3]]
-  
-  elif expanded_face_bb[2] > expanded_face_bb[3]:
-    center_y = (expanded_face_bb[3] / 2) + expanded_face_bb[1]
-    new_height = expanded_face_bb[2]
-
-    final_origin_y = max(0, int(center_y - new_height / 2))
-    final_height = min(new_height, frame_shape[0] - final_origin_y)
-
-    return [expanded_face_bb[0], final_origin_y, expanded_face_bb[2], final_height]
-  
-  else: return expanded_face_bb
-
-def margin_expansion(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple) -> list[int]:
-  center_x = (orig_bb.width / 2) + orig_bb.origin_x
-  center_y = (orig_bb.height / 2) + orig_bb.origin_y
-
-  new_width = orig_bb.width * (1 + margin_hyperparam)
-  new_height = orig_bb.height * (1 + margin_hyperparam)
-
-  new_origin_x = int(center_x - (new_width / 2))
-  new_origin_y = int(center_y - (new_height / 2))
-
-  final_origin_x = max(0, new_origin_x)
-  final_origin_y = max(0, new_origin_y)
-  final_width = min(new_width, frame_shape[1] - final_origin_x)
-  final_height = min(new_height, frame_shape[0] - final_origin_y)
-
-  return [final_origin_x, final_origin_y, int(final_width), int(final_height)]
-
-def process_videos(n_frames: int, std_img_size: tuple[int,int], samples_dest_dir: str, data_srce_dir: str, label: int, margin_hyperparam: float) -> None:
+  n_frames = worker_n_frames
+  label = worker_label
+  samples_dest_dir = worker_samples_dest_dir
+  data_srce_dir = worker_data_srce_dir
+  std_img_size = (worker_std_img_size, worker_std_img_size)
+  margin_hyperparam = worker_margin_hyperparam
 
   #load in mediapipe detector
   base_options = python.BaseOptions(model_asset_path='detector.tflite')
   options = vision.FaceDetectorOptions(base_options=base_options)
   detector = vision.FaceDetector.create_from_options(options)
 
-  sample_count = 0
-  video_count = 0
-  video_file_names = os.listdir(data_srce_dir)
+  print("Mediapipe Face Detector Initialized!")
 
-  for video in video_file_names:
-    video_count += 1
+def process_videos(data_srce_dir: str, n_frames: int, label: int, samples_dest_dir: str, margin_hyperparam: float, std_img_size: int) -> None:
 
-    video_path = os.path.join(data_srce_dir, video)
-    sample_tuple = process_single_video(video_name=video, video_path=video_path, n_frames=n_frames, detector=detector, margin_hyperparam=margin_hyperparam, std_img_size=std_img_size )
-
-
-    if not sample_tuple:
-      print(f"video: {video_count} could not not be used!")
-      continue
-
-    #create sample tuple
-    sample_count += 1
-    sample = {"frames": sample_tuple[0],
-              "valid_frame_count": sample_tuple[1],
-              "video_name": video,
-              "label": label
-             }
-
-    #serialize sample dictionary using pickle
-    #add serialized sample to samples_dest_dir folder
-    torch.save(sample, os.path.join(samples_dest_dir, f"sample_{sample_count}.pt"))
-    
-    if video_count % 80 == 0:
-        print(f"processed video: {video_count} and successfully uploaded sample!")
+  video_file_names = [file for file in os.listdir(data_srce_dir) if file.endswith(".mp4")]
+  
+  with Pool(processes=5, initializer=init_worker, initargs=(n_frames, label, samples_dest_dir, data_srce_dir, margin_hyperparam, std_img_size) ) as p:
+    p.map(process_single_video, video_file_names)
   
   return None
 
-def process_single_video(video_name: str, video_path: str, n_frames: int, detector: Any, margin_hyperparam: float, std_img_size: tuple[int, int]) -> tuple[torch.Tensor, int] | None:
+def process_single_video(video_name: str) -> None:
+  global detector
+
   frame_tensor_list = []
+  video_path = os.path.join(data_srce_dir, video_name)
   loaded_video = cv.VideoCapture(video_path)
   contains_face = False
   valid_face_count = 0
@@ -111,7 +75,10 @@ def process_single_video(video_name: str, video_path: str, n_frames: int, detect
   for idx in range(video_frame_count):
     ret, img = loaded_video.read()
 
-    if not ret or idx not in frame_idxs:
+    if not ret:
+      break
+    
+    if idx not in frame_idxs:
       continue
 
     rgb_img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
@@ -127,12 +94,12 @@ def process_single_video(video_name: str, video_path: str, n_frames: int, detect
     if len(result.detections) > 0:
       valid_face_count += 1
       largest_face_area = 0
-      largest_face_idx = -1
-      for idx, detection in enumerate(result.detections):
+      largest_face_idx = 0
+      for i, detection in enumerate(result.detections):
         current_face_area = detection.bounding_box.width * detection.bounding_box.height
         if current_face_area > largest_face_area:
           largest_face_area = current_face_area
-          largest_face_idx = idx
+          largest_face_idx = i
       
       largest_face = result.detections[largest_face_idx]
       largest_face_bb = largest_face.bounding_box
@@ -177,11 +144,60 @@ def process_single_video(video_name: str, video_path: str, n_frames: int, detect
       frame_tensor_list.append(frame_tensor_list[-1])
       
     #convert list of tensors into stack of tensors
-    return (torch.stack(frame_tensor_list).contiguous(), valid_face_count)
-  else:
-    return None
-  
+    sample = {"frames": torch.stack(frame_tensor_list).contiguous(),
+               "valid_frame_count": valid_face_count,
+               "label": label,
+               "video_name": video_name
+              }
+    
+    video_name_tokens = video_name.split(".")
+    torch.save(sample, os.path.join(samples_dest_dir, f"processed_{video_name_tokens[0]}.pt"))
 
+    print(f"successfully processed video: {video_name}")
+  else:
+    print(f"unsuccessfully processed video: {video_name}")
+
+def prepare_face_crop(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple) -> list[int]:
+  expanded_face_bb = margin_expansion(orig_bb, margin_hyperparam, frame_shape)
+  
+  #resize face_bb into a square
+  if expanded_face_bb[2] < expanded_face_bb[3]:
+    center_x = (expanded_face_bb[2] / 2) + expanded_face_bb[0]
+    new_width = expanded_face_bb[3]
+
+    final_origin_x = max(0, int(center_x - new_width / 2))
+    final_width = min(new_width, frame_shape[1] - final_origin_x)
+
+    return [final_origin_x, expanded_face_bb[1], final_width, expanded_face_bb[3]]
+  
+  elif expanded_face_bb[2] > expanded_face_bb[3]:
+    center_y = (expanded_face_bb[3] / 2) + expanded_face_bb[1]
+    new_height = expanded_face_bb[2]
+
+    final_origin_y = max(0, int(center_y - new_height / 2))
+    final_height = min(new_height, frame_shape[0] - final_origin_y)
+
+    return [expanded_face_bb[0], final_origin_y, expanded_face_bb[2], final_height]
+  
+  else: return expanded_face_bb
+
+def margin_expansion(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple) -> list[int]:
+  center_x = (orig_bb.width / 2) + orig_bb.origin_x
+  center_y = (orig_bb.height / 2) + orig_bb.origin_y
+
+  new_width = orig_bb.width * (1 + margin_hyperparam)
+  new_height = orig_bb.height * (1 + margin_hyperparam)
+
+  new_origin_x = int(center_x - (new_width / 2))
+  new_origin_y = int(center_y - (new_height / 2))
+
+  final_origin_x = max(0, new_origin_x)
+  final_origin_y = max(0, new_origin_y)
+  final_width = min(new_width, frame_shape[1] - final_origin_x)
+  final_height = min(new_height, frame_shape[0] - final_origin_y)
+
+  return [final_origin_x, final_origin_y, int(final_width), int(final_height)]
+  
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("num_frames", metavar="number_frames_per_video", type=int, help="int that decides the number of frames to extract from a video")
@@ -206,13 +222,16 @@ if __name__ == "__main__":
 
   try:
     #for real dataset
-    process_videos(n_frames=num_frames, std_img_size=(std_img_size, std_img_size), samples_dest_dir=real_samples_dest_dir, data_srce_dir=real_data_srce_dir, margin_hyperparam=margin_hyperparam, label=0)
+    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=real_samples_dest_dir, data_srce_dir=real_data_srce_dir, margin_hyperparam=margin_hyperparam, label=0)
     print("finished processing original video files\n")
+  except Exception as e:
+    print(f"error: {e}")
+    exit()
   
+  try:
     #for deepfake dataset
-    process_videos(n_frames=num_frames, std_img_size=(std_img_size, std_img_size), samples_dest_dir=fake_samples_dest_dir, data_srce_dir=fake_data_srce_dir, margin_hyperparam=margin_hyperparam, label=1)
+    process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=fake_samples_dest_dir, data_srce_dir=fake_data_srce_dir, margin_hyperparam=margin_hyperparam, label=1)
     print("finished processing deepfake video files\n")
-
   except Exception as e:
     print(f"error: {e}")
     exit()
