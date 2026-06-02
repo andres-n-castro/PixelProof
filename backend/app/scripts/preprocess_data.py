@@ -35,7 +35,7 @@ def init_worker(worker_n_frames: int, worker_label: int, worker_samples_dest_dir
   margin_hyperparam = worker_margin_hyperparam
 
   #load in mediapipe detector
-  base_options = python.BaseOptions(model_asset_path='detector.tflite')
+  base_options = python.BaseOptions(model_asset_path='app/scripts/blaze_face_short_range.tflite')
   options = vision.FaceDetectorOptions(base_options=base_options)
   detector = vision.FaceDetector.create_from_options(options)
 
@@ -200,14 +200,14 @@ def margin_expansion(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple)
   
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument("num_frames", metavar="number_frames_per_video", type=int, help="int that decides the number of frames to extract from a video")
-  parser.add_argument("std_img_size", metavar="standardized_image_size", type=int, help="is the standard image size for the frame tensors")
-  parser.add_argument("real_data_srce_dir", metavar="real_data_source_diretory", type=str, help="the source directory for the original dataset")
-  parser.add_argument("fake_data_srce_dir", metavar="fake_data_source_diretory", type=str, help="the source directory for the deepfake dataset")
-  parser.add_argument("real_samples_dest_dir", metavar="real_samples_destination_directory", type=str, help="the destination directory for the preprocessed original samples")
-  parser.add_argument("fake_samples_dest_dir", metavar="fake_samples_destination_directory", type=str, help="the destination directory for the preprocessed fake samples")
-  parser.add_argument("margin_hyperparam", metavar="margin_hyperparameter", type=float, help="is the tuned hyperparameter for margin expansion on the retrieved largest face bounding box")
-  parser.add_argument("num_workers", metavar="number of worker processes", type=int, help="int that determines the number of workers to be pooled in the Pool() constructor")
+  parser.add_argument("--num_frames", metavar="number_frames_per_video", type=int, help="int that decides the number of frames to extract from a video")
+  parser.add_argument("--std_img_size", metavar="standardized_image_size", type=int, help="is the standard image size for the frame tensors")
+  parser.add_argument("--real_data_srce_dir", metavar="real_data_source_diretory", type=str, help="the source directory for the original dataset")
+  parser.add_argument("--fake_data_srce_dir", metavar="fake_data_source_diretory", type=str, help="the source directory for the deepfake dataset")
+  parser.add_argument("--real_samples_dest_dir", metavar="real_samples_destination_directory", type=str, help="the destination directory for the preprocessed original samples")
+  parser.add_argument("--fake_samples_dest_dir", metavar="fake_samples_destination_directory", type=str, help="the destination directory for the preprocessed fake samples")
+  parser.add_argument("--margin_hyperparam", metavar="margin_hyperparameter", type=float, help="is the tuned hyperparameter for margin expansion on the retrieved largest face bounding box")
+  parser.add_argument("--num_workers", metavar="number of worker processes", type=int, help="int that determines the number of workers to be pooled in the Pool() constructor")
   
 
 
@@ -224,6 +224,7 @@ if __name__ == "__main__":
 
   try:
     #for real dataset
+    os.makedirs(name=real_samples_dest_dir, exist_ok=True)
     process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=real_samples_dest_dir, data_srce_dir=real_data_srce_dir, margin_hyperparam=margin_hyperparam, label=0, num_workers=num_workers)
     print("finished processing original video files\n")
   except Exception as e:
@@ -232,6 +233,7 @@ if __name__ == "__main__":
   
   try:
     #for deepfake dataset
+    os.makedirs(name=fake_samples_dest_dir, exist_ok=True)
     process_videos(n_frames=num_frames, std_img_size=std_img_size, samples_dest_dir=fake_samples_dest_dir, data_srce_dir=fake_data_srce_dir, margin_hyperparam=margin_hyperparam, label=1, num_workers=num_workers)
     print("finished processing deepfake video files\n")
   except Exception as e:
