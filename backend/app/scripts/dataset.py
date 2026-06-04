@@ -26,6 +26,7 @@ class DeepfakeDataset(Dataset):
     return combined_dataset
 
 
+#testing code to see if dataset class correctly creates dataset between the strings of the real and fake folders
 dataset = DeepfakeDataset(parent_dir="preprocessed_data/", real_folder="preprocessed_real", deepfake_folder="preprocessed_fake")
 
 print(len(dataset))
