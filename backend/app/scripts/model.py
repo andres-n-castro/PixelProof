@@ -36,7 +36,7 @@ class DeepfakeDetector(nn.Module):
   def __init__(self, resnet_weights, resnet_prog, input_size, hidden_size, num_layers, num_classes):
     super().__init__()
 
-    self.resnet_model = models.resnet34(weights=resnet_weights, progress=resnet_prog)
+    self.resnet_model = models.resnet50(weights=resnet_weights, progress=resnet_prog)
     for param in self.resnet_model.parameters():
       param.requires_grad = False
 
