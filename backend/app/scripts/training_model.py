@@ -7,7 +7,7 @@ import argparse
 import torch.optim as optim
 import torch.nn as nn
 import torch
-import copy
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score)
 
 #initialize device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -16,9 +16,17 @@ def training(model: DeepfakeDetector, train_loader: DataLoader, val_loader: Data
   best_state_dict = {k : v.cpu().clone() for k,v in model.state_dict().items()}
   best_val_loss = float("inf")
   train_loss = 0
+  history = {
+  "train_loss": [],
+  "val_loss": [],
+  "val_accuracy": [],
+  "val_recall": [],
+  "val_precision": [],
+  "val_f1": [],
+  }
 
   #phase 1: Train lstm head only
-  best_state_dict, best_val_loss, train_loss = train_phase(model=model, train_loader=train_loader, val_loader=val_loader, num_epochs=num_epochs, optimizer=optimizer, criterion=criterion)
+  best_state_dict, best_history_idx, best_val_loss, train_loss = train_phase(model=model, train_loader=train_loader, val_loader=val_loader, num_epochs=num_epochs, optimizer=optimizer, criterion=criterion, history=history)
   print(f"Phase 1 Training Final Loss: {train_loss}")
   
   #phase 2: Finetune the resnet body with the lstm head
@@ -28,30 +36,41 @@ def training(model: DeepfakeDetector, train_loader: DataLoader, val_loader: Data
   model.unfreeze_resnet_layers(num_layers_unfreeze)
   new_optim = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=finetune_lr)
 
-  best_state_dict, best_val_loss, train_loss = train_phase(model, train_loader=train_loader, val_loader=val_loader, num_epochs=num_epochs, optimizer=new_optim, criterion=criterion)
+  best_state_dict, best_history_idx, best_val_loss, train_loss = train_phase(model, train_loader=train_loader, val_loader=val_loader, num_epochs=num_epochs, optimizer=new_optim, criterion=criterion, history=history)
   print(f"Phase 2 Training Loss: {train_loss}")
 
-  return best_state_dict, best_val_loss
+  return best_state_dict, best_val_loss, best_history_idx, history 
 
-def train_phase(model: DeepfakeDetector, train_loader: DataLoader, val_loader: DataLoader, num_epochs: int, optimizer: optim.Adam, criterion: nn.CrossEntropyLoss) -> tuple[dict, float, float]:
+def train_phase(model: DeepfakeDetector, train_loader: DataLoader, val_loader: DataLoader, num_epochs: int, optimizer: optim.Adam, criterion: nn.CrossEntropyLoss, history: dict) -> tuple[dict, int, float, float]:
   best_val_loss = float("inf")
+  best_history_idx = -1
   best_state_dict = {k : v.cpu().clone() for k,v in model.state_dict().items()}
-  avg_train_loss = 0
+  train_loss = 0
 
   for epoch in range(num_epochs):
     model.train()
-    avg_train_loss = train_one_epoch(model=model, train_loader=train_loader, optimizer=optimizer, criterion=criterion)
-    print(f"Train Loss for Epoch {epoch}: {avg_train_loss}\n")
+    train_loss = train_one_epoch(model=model, train_loader=train_loader, optimizer=optimizer, criterion=criterion)
+    print(f"Train Loss for Epoch {epoch}: {train_loss}\n")
 
-    if epoch % 1 == 0 or epoch == num_epochs -1:
-      model.eval()
-      curr_val_loss = evaluate(model=model, val_loader=val_loader, criterion=criterion)
+    
+    model.eval()
+    val_accuracy, val_recall, val_precision, val_f1, curr_val_loss = evaluate(model=model, val_loader=val_loader, criterion=criterion)
 
-      if curr_val_loss < best_val_loss:
-        best_val_loss = curr_val_loss
-        best_state_dict = {k : v.cpu().clone() for k,v in model.state_dict().items()}
+    #append performance metrics to history
+    history["train_loss"].append(train_loss)
+    history["val_loss"].append(curr_val_loss)
+    history["val_accuracy"].append(val_accuracy)
+    history["val_recall"].append(val_recall)
+    history["val_precision"].append(val_precision)
+    history["val_f1"].append(val_f1)
 
-  return best_state_dict, best_val_loss, avg_train_loss
+    #condition block that obtains the history idx with the best val loss
+    if curr_val_loss < best_val_loss:
+      best_val_loss = curr_val_loss
+      best_state_dict = {k : v.cpu().clone() for k,v in model.state_dict().items()}
+      best_history_idx = len(history["val_loss"]) - 1
+
+  return best_state_dict, best_history_idx, best_val_loss, train_loss
 
 def train_one_epoch(model: DeepfakeDetector, train_loader: DataLoader, optimizer: optim.Adam, criterion: nn.CrossEntropyLoss) -> float:
 
@@ -84,8 +103,10 @@ def train_one_epoch(model: DeepfakeDetector, train_loader: DataLoader, optimizer
   return tot_train_loss / len(train_loader)
  
 @torch.no_grad()
-def evaluate(model: DeepfakeDetector, val_loader: DataLoader, criterion: nn.CrossEntropyLoss) -> float:
+def evaluate(model: DeepfakeDetector, val_loader: DataLoader, criterion: nn.CrossEntropyLoss) -> tuple[float, float, float, float, float]:
 
+  all_preds = []
+  all_labels = []
   tot_loss = 0
 
   for batch, labels in val_loader:
@@ -95,13 +116,24 @@ def evaluate(model: DeepfakeDetector, val_loader: DataLoader, criterion: nn.Cros
 
     #forward pass
     predictions = model(batch)
+    pred_classes = torch.argmax(predictions, dim=1)
+
+    all_preds.extend(pred_classes.cpu().numpy())
+    all_labels.extend(labels.cpu().numpy())
     
     #calculate loss
     l = criterion(predictions, labels)
 
     tot_loss += l.item()
+
+  val_accuracy = accuracy_score(y_true=all_labels, y_pred=all_preds)
+  val_recall = recall_score(y_true=all_labels, y_pred=all_preds)
+  val_precision = precision_score(y_true=all_labels, y_pred=all_preds)
+  val_f1 =  f1_score(y_true=all_labels, y_pred=all_preds)
+  val_loss = tot_loss / len(val_loader)
+
   
-  return tot_loss / len(val_loader)
+  return (val_accuracy, val_recall, val_precision, val_f1, val_loss)
     
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
@@ -151,7 +183,7 @@ if __name__ == "__main__":
   criterion = nn.CrossEntropyLoss()
 
   #call training function
-  best_state_dict, best_val_loss = training(
+  best_state_dict, best_val_loss, best_history_idx, history = training(
     model=model, 
     train_loader=train_dataloader, 
     val_loader=val_dataloader, 
@@ -162,8 +194,21 @@ if __name__ == "__main__":
     finetune_lr=args.finetune_learn_rate
     )
   
-  print(f"Best weights: {best_state_dict} | Best Val Loss: {best_val_loss}")
+  best_history_metrics = {
+    "best_train_loss": history["train_loss"][best_history_idx],
+    "best_val_loss": history["val_loss"][best_history_idx],
+    "best_val_accuracy": history["val_accuracy"][best_history_idx],
+    "best_val_recall": history["val_recall"][best_history_idx],
+    "best_val_precision": history["val_precision"][best_history_idx],
+    "best_val_f1_score": history["val_f1"][best_history_idx],
+  }
+  
+  print(f"Best weights: {best_state_dict}")
+
+  print(f"Best History Metrics: {best_history_metrics}")
+
   torch.save(best_state_dict, args.best_state_dict_filename)
+  torch.save(history, "history.pt")
 
 
 
