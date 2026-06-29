@@ -7,7 +7,7 @@ import torch.optim as optim
 import torchvision.transforms as transforms
 import torchvision.models as models
 from dataset import videos_dataset_creation, DeepFakeDataset, DataLoader
-from backend.app.scripts.model import DeepfakeDetector
+from backend.app.scripts.legacy.legacy_model import DeepfakeDetector
 
 def train_one_epoch(model, loader, optimizer, criterion):
   model.train()

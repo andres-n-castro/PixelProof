@@ -1,61 +1,30 @@
-import torch
 import torch.nn as nn
+from torchvision.models.resnet import resnet18
 import torchvision.models as models
 
-#LSTM class head implementation
-class LSTMHead(nn.Module):
-  def __init__(self, input_size, hidden_size, num_layers, num_classes):
+
+class DeepfakeClassifier(nn.Module):
+  def __init__(self, weights: models.ResNet18_Weights, input_size: int, hidden_size: int, device: str):
     super().__init__()
-    self.input_size = input_size
-    self.hidden_size = hidden_size
-    self.num_layers = num_layers
-    self.num_classes = num_classes
-    self.lstm = nn.LSTM(
-      self.input_size, 
-      self.hidden_size, 
-      self.num_layers, 
-      batch_first=True,
-      bidirectional=True,
-      dropout=0.5 if self.num_layers > 1 else 0
-    )
-
-    #!why did I multiply hidden size by 2????
-    self.out_layer = nn.Linear(self.hidden_size*2, self.num_classes)
-    self.dropout = nn.Dropout(0.5)
-
-  def forward(self, x):
-    out,_ = self.lstm(x)
-    
-    #!how does this mean pooling work?
-    mean_pooling = torch.mean(out, dim=1)
-    out = self.dropout(mean_pooling)
-    out = self.out_layer(out)
-    return out
-
-class DeepfakeDetector(nn.Module):
-  def __init__(self, resnet_weights, resnet_prog, input_size, hidden_size, num_layers, num_classes):
-    super().__init__()
-
-    self.resnet_model = models.resnet50(weights=resnet_weights, progress=resnet_prog)
-    for param in self.resnet_model.parameters():
+    self.resnet_model = resnet18(weights=weights, progress=True)
+    self.resnet_body = nn.Sequential(*list(self.resnet_model.children())[:-1]) #obtains resnet body WITHOUT head
+    for param in self.resnet_body.parameters():
       param.requires_grad = False
 
-    self.resnet_body = nn.Sequential(*list(self.resnet_model.children())[:-1])
-
-    self.lstm_head = LSTMHead(input_size, hidden_size, num_layers, num_classes)
-
+    self.lstm_head = LSTMHead(hidden_size=hidden_size, input_size=input_size, device=device)
+  
+  #will probably need my own version since this calls the forward prop through not Resnet body + Lstm layer
   def forward(self, x):
-    batch_size, seq_len, c, w, h= x.size()
 
-    #fold input tnesor
-    x = x.view(batch_size*seq_len, c, w, h)
+    B, F, C, H, W = x.size()
+    x = x.view(B*F, C, H, W)
 
     features = self.resnet_body(x)
 
-    #unfold output tensor
-    features = features.view(batch_size, seq_len, -1)
+    features = features.view(B, F, -1)
 
     out = self.lstm_head(features)
+    
     return out
 
   def unfreeze_resnet_layers(self, num_blocks=None):
@@ -70,3 +39,31 @@ class DeepfakeDetector(nn.Module):
         param.requires_grad = True 
     else:
       return None
+
+
+
+class LSTMHead(nn.Module):
+  def __init__(self, hidden_size: int, input_size: int, device: str):
+    super().__init__()
+    self.hidden_size = hidden_size
+    self.input_size = input_size
+    self.num_layers = 2
+    self.dropout = 0.5 if self.num_layers > 1 else 0
+    self.bias = True
+    self.lstm = nn.LSTM(
+      hidden_size=self.hidden_size,
+      input_size=self.input_size,
+      dropout=self.dropout,
+      bias=self.bias,
+      num_layers=self.num_layers,
+      batch_first=True,
+      device=device
+    )
+
+    self.fc = nn.Linear(hidden_size, 2)
+
+  def forward(self, x):
+    out, _ = self.lstm(x)
+    out = self.fc(out[:, -1, :])
+
+    return out
