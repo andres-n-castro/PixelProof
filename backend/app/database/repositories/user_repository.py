@@ -52,3 +52,15 @@ def get_user(db : Session, user_id : uuid.UUID):
 
   db_obj = db.scalars(stmt).first()
   return db_obj
+
+
+def get_user_email(db: Session, user_email) -> bool:
+
+  stmt = (
+    sa.select(User)
+    .where(User.email == user_email)
+  )
+
+  db_obj = db.scalars(stmt).first()
+
+  return db_obj

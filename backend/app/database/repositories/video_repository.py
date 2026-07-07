@@ -1,7 +1,7 @@
 import uuid
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
-from app.database.schemas import VideoCreate, VideoRead
+from app.database.schemas import VideoCreate, VideoRead, VideoUpdate
 from app.database.models import Video
 
 def create_video(db : Session, video : VideoCreate) -> Video:
@@ -15,9 +15,9 @@ def create_video(db : Session, video : VideoCreate) -> Video:
   return new_video
 
 
-def update_video(db : Session, video : VideoRead) -> Video:
+def update_video(db : Session, video : VideoUpdate) -> Video:
 
-  video_data = video.model_dump()
+  video_data = video.model_dump(exclude_unset=True)
 
   stmt = (
     sa.update(Video)
