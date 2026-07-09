@@ -1,26 +1,23 @@
 import uuid
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
-from app.database.schemas import UserCreate, UserRead
-from app.database.models import User
+from database.schemas import UserUpdate
+from database.models import User
+from typing import Any
 
-def create_user(db : Session, user : UserCreate):
-  user_data = user.model_dump()
-  new_user = User(**user_data)
-
-  db.add(new_user)
+def create_user(db : Session, user : User) -> User:
+  db.add(user)
   db.commit()
-  db.refresh(new_user)
-  return new_user
+  db.refresh(user)
+  return user
 
-def update_user(db : Session, user : UserRead):
-
-  user_data = user.model_dump()
+def update_user(db: Session, user: UserUpdate, user_id: uuid.UUID) -> Any | None:
+  update_user = user.model_dump(exclude_unset=True)
 
   stmt = (
     sa.update(User)
-    .wehere(User.id == user.id)
-    .values(**user_data)
+    .where(User.id == user_id)
+    .values(**update_user)
     .returning(User)
   )
 
@@ -29,7 +26,7 @@ def update_user(db : Session, user : UserRead):
 
   return updated_obj
 
-def delete_user(db : Session, user_id : uuid.UUID):
+def delete_user(db : Session, user_id : uuid.UUID) -> bool:
 
   stmt = (
     sa.delete(User)
@@ -38,13 +35,14 @@ def delete_user(db : Session, user_id : uuid.UUID):
   )
 
   result = db.execute(stmt)
+
   if result.first != None:
     db.commit()
     return True
   else:
     return False
 
-def get_user(db : Session, user_id : uuid.UUID):
+def get_user(db : Session, user_id : uuid.UUID) -> Any | None:
   stmt = (
     sa.select(User)
     .where(User.id == user_id)
@@ -54,7 +52,7 @@ def get_user(db : Session, user_id : uuid.UUID):
   return db_obj
 
 
-def get_user_email(db: Session, user_email) -> bool:
+def get_user_email(db: Session, user_email: str) -> User | None:
 
   stmt = (
     sa.select(User)

@@ -1,7 +1,6 @@
-from celery_tasks import add
+from celery_app import celery_app
 
-result = add.delay(2, 3)
-
-print("task submitted")
-print(f"task id: {result.id}")
-print(f"result: {result.get(timeout=10)}")
+if __name__ == "__main__":
+  print("registered tasks:")
+  for task_name in sorted(celery_app.tasks.keys()):
+    print(task_name)

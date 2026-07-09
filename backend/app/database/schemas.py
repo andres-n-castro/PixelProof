@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 
 class VideoCreate(BaseModel):
@@ -9,6 +9,8 @@ class VideoCreate(BaseModel):
   status: str
   user_id: int
   path: str | None = None
+
+  model_config = ConfigDict(from_attributes=True)
 
 class VideoRead(BaseModel):
   id: uuid.UUID
@@ -19,6 +21,8 @@ class VideoRead(BaseModel):
   user_id: int
   path: str | None = None
 
+  model_config = ConfigDict(from_attributes=True)
+
 class VideoUpdate(BaseModel):
   id: uuid.UUID
   video_name: str | None = None
@@ -28,21 +32,33 @@ class VideoUpdate(BaseModel):
   user_id: int | None = None
   path: str | None = None
 
+  model_config = ConfigDict(from_attributes=True)
+
 class UserCreate(BaseModel):
   fullname: str
   email: str
   password: str
 
+  model_config = ConfigDict(from_attributes=True)
+
 class UserRead(BaseModel):
   id: uuid.UUID
   fullname: str
   email: str
-  hashed_password: str
-  video_list: Optional[List[VideoRead]]
-  created_at: datetime
-  last_login: datetime
+  videos: Optional[List[VideoRead]]
+  last_login: Optional[datetime] = None
+
+  model_config = ConfigDict(from_attributes=True)
 
 class UserCredentials(BaseModel):
-  id: uuid.UUID
   email: str
   password: str
+
+  model_config = ConfigDict(from_attributes=True)
+
+class UserUpdate(BaseModel):
+  fullname: str | None = None
+  email: str | None = None
+  password: str | None = None
+
+  model_config = ConfigDict(from_attributes=True)

@@ -1,23 +1,25 @@
 
-from app.main import app
-from app.database.schemas import UserCreate, UserRead, UserCredentials, VideoCreate, VideoRead
-import app.database.repositories as repo
-from main import CurrentSession
+from database.schemas import UserCreate, UserRead, UserCredentials, UserUpdate
+from database.repositories import user_repository as repo
+from database.database import CurrentSession
 from pwdlib import PasswordHash
 from database.models import User
-from fastapi import HTTPException, BackgroundTasks, UploadFile
+from fastapi import HTTPException, APIRouter
 from auth.auth_handler import sign_jwt
+import uuid
+
+router = APIRouter()
 
 password_hash = PasswordHash.recommended()
 
-@app.post("/users/register", status_code=201)
+@router.post("/user/register", status_code=201, response_model=UserRead)
 async def register(user: UserCreate, db: CurrentSession):
 
   #verify if user already exists
   existing_user = repo.get_user_email(db, user.email)
 
   if existing_user:
-    raise HTTPException(detail="user already exists")
+    raise HTTPException(status_code=404, detail="user already exists")
 
   #hash password
   hashed_password = password_hash.hash(user.password)
@@ -31,9 +33,9 @@ async def register(user: UserCreate, db: CurrentSession):
   )
 
   #add user to db
-  return await repo.create_user(db, new_user)
+  return repo.create_user(db, new_user)
 
-@app.post("users/login", status_code=200)
+@router.post("/user/login", status_code=200)
 async def login(db: CurrentSession, user_credentials: UserCredentials):
 
   #retrieve user object from database
@@ -56,15 +58,14 @@ async def login(db: CurrentSession, user_credentials: UserCredentials):
   jwt = token_response["access_token"]
   return jwt
   
-@app.patch("/users")
-async def update(package : UserRead, db: CurrentSession ):
-  return await repo.update_user(db, package)
+@router.patch("/user/{user_id}", status_code=200)
+async def update(user_id: uuid.UUID, package: UserUpdate, db: CurrentSession ):
+  return repo.update_user(db=db, user=package, user_id=user_id)
 
-@app.delete("/users/{user_id}")
-async def delete(user_id : int, db: CurrentSession ):
-  return await repo.delete_user(db, user_id)
+@router.delete("/user/{user_id}", status_code=204)
+async def delete(user_id: uuid.UUID, db: CurrentSession ):
+  return repo.delete_user(db, user_id)
 
-#convert this into a dependency function
-@app.get("/users/{user_id}")
-async def get_user(user_id: int, db : CurrentSession ):
-  return await repo.get_user(db, user_id)
+@router.get("/user/{user_id}")
+async def get_user(user_id: uuid.UUID, db: CurrentSession ):
+  return repo.get_user(db, user_id)

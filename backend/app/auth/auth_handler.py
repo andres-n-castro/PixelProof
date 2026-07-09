@@ -3,10 +3,14 @@ from typing import Dict
 import jwt
 from decouple import config
 from fastapi import HTTPException
+import uuid
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 
-JWT_SECRET = config("secret")
-JWT_ALGORITHM = config("algorithm")
+secret = os.getenv("secret")
+algorithm = os.getenv("algorithm")
 
 #returns a dict of where the key is str "access_token" and key is user's token
 def token_response(token: str) -> dict:
@@ -15,13 +19,13 @@ def token_response(token: str) -> dict:
   }
 
 #function that creates the the jwt token using user id and specific experiation time
-def sign_jwt(user_id: str) -> Dict[str, str]:
+def sign_jwt(user_id: uuid.UUID) -> Dict[str, str]:
   payload ={
-    "user_id": user_id,
+    "user_id": str(user_id),
     "exp": datetime.now(timezone.utc) + timedelta(hours=1)
   }
 
-  token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+  token = jwt.encode(payload, secret, algorithm=algorithm)
 
   return token_response(token)
 

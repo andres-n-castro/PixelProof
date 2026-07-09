@@ -1,18 +1,21 @@
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from dotenv import load_dotenv
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-from scripts.model import DeepfakeClassifier
-import torch
-from database.database import get_db
+from database.models import Base
+from database.database import engine
+from api.user_router import router as user_router
+from api.video_router import router as video_router
 
 load_dotenv()
 
 app = FastAPI()
+app.include_router(user_router)
+app.include_router(video_router)
+
+Base.metadata.create_all(bind=engine)
 
 origins = [
-  "https://localhost:3000"
+  "http://localhost:3000"
 ]
 
 app.add_middleware(
@@ -23,26 +26,8 @@ app.add_middleware(
   allow_headers=["*"]
 )
 
-#load in mediapipe detector
-base_options = python.BaseOptions(model_asset_path='app/scripts/blaze_face_short_range.tflite')
-options = vision.FaceDetectorOptions(base_options=base_options)
-detector = vision.FaceDetector.create_from_options(options)
-
-#instantiate custom deepfake classifier model
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = DeepfakeClassifier(
-  weights=None,
-  input_size=512,
-  hidden_size=256,
-  device=device
-)
-
-#make sure to provide path for the best state dict containing the weights for the model for actual predicitng
-state_dict = torch.load("scripts/training_outputs/best_state_dict.pt", map_location=device)
-model.load_state_dict(state_dict=state_dict)
-model.to(device=device)
-model.eval()
-
 @app.get("/")
 def root():
   return {"status : online"}
+
+

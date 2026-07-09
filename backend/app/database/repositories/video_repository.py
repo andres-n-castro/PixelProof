@@ -1,8 +1,8 @@
 import uuid
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
-from app.database.schemas import VideoCreate, VideoRead, VideoUpdate
-from app.database.models import Video
+from database.schemas import VideoCreate, VideoRead, VideoUpdate
+from database.models import Video
 
 def create_video(db : Session, video : VideoCreate) -> Video:
   video_data = video.model_dump()

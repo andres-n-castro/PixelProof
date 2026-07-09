@@ -1,14 +1,16 @@
-from app.main import app, CurrentSession
-import database.repositories.video_repository as repo
+from database.database import CurrentSession
+from database.repositories import video_repository as repo
 from database.schemas import VideoCreate, VideoUpdate, VideoRead
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, UploadFile, APIRouter
 from auth.auth_get_user import CurrentUser
 from celery_tasks import run_model
 from pathlib import Path
 import shutil
 
+router = APIRouter()
+
 #validate file and authentication
-@app.post("/videos", status_code=202)
+@router.post("/videos", status_code=202)
 async def process(video: UploadFile,  user_payload: CurrentUser, db: CurrentSession):
   
   if Path(video.filename).suffix.lower() != ".mp4":
@@ -33,7 +35,7 @@ async def process(video: UploadFile,  user_payload: CurrentUser, db: CurrentSess
 
   return (f"New Video Sample created! Status: {video_row.status}", video_row.id)
 
-@app.get("/videos/{video_id}/status")
+@router.get("/videos/{video_id}/status")
 async def progress(video_id: int):
   try:
     video_obj = repo.get_video(db=CurrentSession, video_id=video_id)
@@ -42,7 +44,7 @@ async def progress(video_id: int):
   
   return video_obj.status
 
-@app.get("/videos/{video_id}")
+@router.get("/videos/{video_id}")
 async def get_video(video_id: int):
   try:
     video_obj = repo.get_video(db=CurrentSession, video_id=video_id)

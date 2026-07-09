@@ -4,7 +4,6 @@ from dataset import DeepfakeDataset
 import os
 import torch
 import argparse
-from training_model import evaluate
 import torch.nn as nn
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score, recall_score, precision_score, f1_score
 import matplotlib.pyplot as plt

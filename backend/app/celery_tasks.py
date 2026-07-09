@@ -1,7 +1,7 @@
 from celery_app import celery_app
 from dotenv import load_dotenv
 from torch import Tensor, argmax
-from main import model, detector
+from inference_runtime import model, detector
 from torch.nn import Softmax
 from database.repositories.video_repository import update_video, get_video
 from database.schemas import VideoUpdate
