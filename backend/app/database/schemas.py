@@ -5,32 +5,31 @@ from typing import Optional, List
 
 class VideoCreate(BaseModel):
   video_name: str
+  video_path: str | None = None
   prediction: str | None = None
   status: str
-  user_id: int
-  path: str | None = None
+  user_id: uuid.UUID
 
   model_config = ConfigDict(from_attributes=True)
 
 class VideoRead(BaseModel):
   id: uuid.UUID
   video_name: str
+  video_path: str | None = None
   prediction: str
   status: str
   created_at: datetime
-  user_id: int
-  path: str | None = None
+  user_id: uuid.UUID
 
   model_config = ConfigDict(from_attributes=True)
 
 class VideoUpdate(BaseModel):
-  id: uuid.UUID
   video_name: str | None = None
+  video_path: str | None = None
   prediction: str | None = None
   status: str | None = None
   created_at: datetime | None = None
-  user_id: int | None = None
-  path: str | None = None
+  user_id: uuid.UUID | None = None
 
   model_config = ConfigDict(from_attributes=True)
 

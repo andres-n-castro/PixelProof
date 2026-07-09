@@ -1,8 +1,7 @@
 from celery_app import celery_app
 from dotenv import load_dotenv
-from torch import Tensor, argmax
-from inference_runtime import model, detector
-from torch.nn import Softmax
+from torch import Tensor
+from inference_runtime import model, detector, device
 from database.repositories.video_repository import update_video, get_video
 from database.schemas import VideoUpdate
 import cv2 as cv
@@ -10,36 +9,46 @@ import mediapipe as mp
 import numpy as np
 import torch
 from typing import Any
-from database.database import get_db
+from database.database import SessionLocal
+import uuid
 
 load_dotenv()
 
-db = get_db()
-
 #completes preprocessing as well as running the model
 @celery_app.task
-def run_model(video_id: int) -> str | None:
+def run_model(video_id: uuid.UUID) -> str | None:
+  db = SessionLocal()
+  try:
+    db_obj = get_video(db=db, video_id=video_id)
 
+    preprocessed_input = process_single_video(db_obj.video_path)
 
-  db_obj = get_video(video_id=video_id)
+    if preprocessed_input is None:
+      video_update = VideoUpdate(
+        status="failed"
+      )
+      _ = update_video(db=db, video=video_update, video_id=video_id)
 
-  preprocessed_input = process_single_video(db_obj.video_path)
+      raise Exception("processed input returned none")
 
-  logit = model(preprocessed_input)
-  prediction = argmax(Softmax(logit))
+    preprocessed_input = preprocessed_input.unsqueeze(0).to(device)
 
-  video_update = VideoUpdate(
-      id=video_id,
-      status="done",
-      prediction="real" if prediction == 0 else "fake"
-    )
-  
+    logit = model(preprocessed_input)
+    prediction = torch.argmax(logit, dim=1).item()
 
-  updated_video_row = update_video(db, video_update)
+    video_update = VideoUpdate(
+        status="done",
+        prediction="real" if prediction == 0 else "fake"
+      )
+    
 
-  return f"successfully processed video!, status: {updated_video_row.status}"
+    updated_video_row = update_video(db=db, video=video_update, video_id=video_id)
 
-def process_single_video(video_path: str) -> Tensor:
+    return f"successfully processed video!, status: {updated_video_row.status}"
+  finally:
+    db.close()
+
+def process_single_video(video_path: str) -> Tensor | None:
 
   frame_tensor_list = []
   loaded_video = cv.VideoCapture(video_path)
@@ -124,6 +133,9 @@ def process_single_video(video_path: str) -> Tensor:
 
   #unload the current video after preprocessing on it is done
   loaded_video.release()
+
+  if len(frame_tensor_list) == 0:
+    return None
 
   if contains_face and len(frame_tensor_list) > 0:
     #pads the tensor list with the last tensor obtained in the case that there were < n_frame tensors retieved from the video

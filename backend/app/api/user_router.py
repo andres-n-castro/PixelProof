@@ -55,8 +55,7 @@ async def login(db: CurrentSession, user_credentials: UserCredentials):
   
   #create JWT
   token_response = sign_jwt(db_user.id)
-  jwt = token_response["access_token"]
-  return jwt
+  return token_response
   
 @router.patch("/user/{user_id}", status_code=200)
 async def update(user_id: uuid.UUID, package: UserUpdate, db: CurrentSession ):

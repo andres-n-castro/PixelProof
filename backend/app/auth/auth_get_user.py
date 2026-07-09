@@ -4,7 +4,7 @@ from auth.auth_bearer import JWTBearer
 from typing import Annotated
 
 
-async def get_current_user(token: Annotated[str, Depends(JWTBearer)]):
+async def get_current_user(token: Annotated[str, Depends(JWTBearer())]):
   user_payload = decode_jwt(token)
   return user_payload
   

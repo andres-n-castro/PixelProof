@@ -1,27 +1,22 @@
 import uuid
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
-from database.schemas import VideoCreate, VideoRead, VideoUpdate
+from database.schemas import VideoUpdate
 from database.models import Video
 
-def create_video(db : Session, video : VideoCreate) -> Video:
-  video_data = video.model_dump()
-  new_video = Video(**video_data)
-
-  db.add(new_video)
+def create_video(db : Session, video : Video) -> Video:
+  db.add(video)
   db.commit()
-  db.refresh(new_video)
-  
-  return new_video
+  db.refresh(video)
+  return video
 
-
-def update_video(db : Session, video : VideoUpdate) -> Video:
+def update_video(db : Session, video : VideoUpdate, video_id: uuid.UUID) -> Video:
 
   video_data = video.model_dump(exclude_unset=True)
 
   stmt = (
     sa.update(Video)
-    .where(Video.id == video.id)
+    .where(Video.id == video_id)
     .values(**video_data)
     .returning(Video)
   )

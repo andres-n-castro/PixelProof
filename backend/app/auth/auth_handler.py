@@ -35,8 +35,8 @@ def decode_jwt(token: str) -> dict:
   try:
     decoded_token = jwt.decode(
       token,
-      JWT_SECRET,
-      algorithms=JWT_ALGORITHM
+      secret,
+      algorithms=algorithm
     )
     return decoded_token
   except:
