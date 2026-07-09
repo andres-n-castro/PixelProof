@@ -1,5 +1,4 @@
-Notes/
 venv/
 backend/kaggle_data
 backend/preprocessed_data
-env/
+.env
