@@ -123,6 +123,7 @@ prompt_toolkit==3.0.52
 proto-plus==1.27.0
 protobuf==6.33.2
 psutil==7.1.0
+psycopg[binary]==3.3.4
 pure_eval==0.2.3
 pwdlib==0.3.0
 pyasn1==0.6.1

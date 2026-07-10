@@ -1,7 +1,7 @@
 from celery_app import celery_app
 from dotenv import load_dotenv
 from torch import Tensor
-from inference_runtime import model, detector, device
+from inference_runtime import get_model, get_detector
 from database.repositories.video_repository import update_video, get_video
 from database.schemas import VideoUpdate
 import cv2 as cv
@@ -19,9 +19,12 @@ load_dotenv()
 def run_model(video_id: uuid.UUID) -> str | None:
   db = SessionLocal()
   try:
+    print(f"[run_model] starting task for video_id={video_id}")
     db_obj = get_video(db=db, video_id=video_id)
+    print(f"[run_model] loaded db row with path={db_obj.video_path}")
 
     preprocessed_input = process_single_video(db_obj.video_path)
+    print(f"[run_model] process_single_video returned {'tensor' if preprocessed_input is not None else 'None'}")
 
     if preprocessed_input is None:
       video_update = VideoUpdate(
@@ -31,6 +34,7 @@ def run_model(video_id: uuid.UUID) -> str | None:
 
       raise Exception("processed input returned none")
 
+    model, device = get_model()
     preprocessed_input = preprocessed_input.unsqueeze(0).to(device)
 
     logit = model(preprocessed_input)
@@ -49,9 +53,11 @@ def run_model(video_id: uuid.UUID) -> str | None:
     db.close()
 
 def process_single_video(video_path: str) -> Tensor | None:
+  print(f"[process_single_video] starting for path={video_path}")
 
   frame_tensor_list = []
   loaded_video = cv.VideoCapture(video_path)
+  detector = get_detector()
   contains_face = False
   valid_face_count = 0
   n_frames = 20
@@ -62,27 +68,34 @@ def process_single_video(video_path: str) -> Tensor | None:
     return None
   
   video_frame_count = int(loaded_video.get(cv.CAP_PROP_FRAME_COUNT))
+  print(f"[process_single_video] video_frame_count={video_frame_count}")
 
   if video_frame_count < n_frames:
+    print(f"[process_single_video] video shorter than required n_frames={n_frames}")
     loaded_video.release()
     return None
 
   frame_idxs = set(np.linspace(0, video_frame_count-1, n_frames, dtype=int))
+  print(f"[process_single_video] selected {len(frame_idxs)} frame indices")
 
   for idx in range(video_frame_count):
     ret, img = loaded_video.read()
 
     if not ret:
+      print(f"[process_single_video] stopped reading at frame idx={idx}")
       break
     
     if idx not in frame_idxs:
       continue
 
+    print(f"[process_single_video] processing selected frame idx={idx}")
     rgb_img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 
     #use mediapipe to detect faces
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_img)
+    print(f"[process_single_video] running detector on frame idx={idx}")
     result = detector.detect(mp_image)
+    print(f"[process_single_video] detector found {len(result.detections)} faces on frame idx={idx}")
 
     #checks to see if current vido contains a frame that has a face
     if not contains_face and len(result.detections) > 0:
@@ -103,6 +116,7 @@ def process_single_video(video_path: str) -> Tensor | None:
 
 
       new_face_bb = prepare_face_crop(largest_face_bb, margin_hyperparam=0.20, frame_shape=rgb_img.shape)
+      print(f"[process_single_video] prepared crop box={new_face_bb}")
 
       #redo the extraction
       #obtain corner coordinates for the face using new B.B.
@@ -111,21 +125,25 @@ def process_single_video(video_path: str) -> Tensor | None:
 
       second_x = orig_x +new_face_bb[2] 
       second_y = orig_y + new_face_bb[3]
+      print(f"[process_single_video] crop corners=({orig_x}, {orig_y}) -> ({second_x}, {second_y})")
 
       #extracted face frame
       face_frame = rgb_img[orig_y:second_y, orig_x:second_x]
+      print(f"[process_single_video] face_frame shape={face_frame.shape}")
 
       if face_frame.size == 0:
           continue
 
       #resizes using inter cubic interpolation for upsampling (making the face frame bigger) since its much smoother than linear interpolation
       resized_face_frame = cv.resize(face_frame, (224,224), interpolation=cv.INTER_CUBIC)
+      print("[process_single_video] resized face frame")
 
       #convert face frame into tensor
       face_tensor = torch.from_numpy(resized_face_frame).permute(2, 0, 1).float() / 255.0
 
       #append tensor to list
       frame_tensor_list.append(face_tensor)
+      print(f"[process_single_video] appended tensor count={len(frame_tensor_list)}")
 
     #case where there are no faces in frame now check if there is a valid previous face to use, if not then continue
     else:
@@ -133,8 +151,10 @@ def process_single_video(video_path: str) -> Tensor | None:
 
   #unload the current video after preprocessing on it is done
   loaded_video.release()
+  print(f"[process_single_video] collected {len(frame_tensor_list)} frame tensors")
 
   if len(frame_tensor_list) == 0:
+    print("[process_single_video] no valid frame tensors collected")
     return None
 
   if contains_face and len(frame_tensor_list) > 0:
@@ -146,6 +166,7 @@ def process_single_video(video_path: str) -> Tensor | None:
     #convert list of tensors into stack of tensors
 
   preprocessed_video = torch.stack(frame_tensor_list).contiguous()
+  print(f"[process_single_video] returning tensor with shape={tuple(preprocessed_video.shape)}")
   return preprocessed_video
 
 def prepare_face_crop(orig_bb: Any, margin_hyperparam: float, frame_shape: tuple) -> list[int]:

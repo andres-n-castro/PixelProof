@@ -1,0 +1,49 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/dockerfile
+    ports:
+      - "8000:8000"
+    container_name: pixelproof-api
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - redis
+      - db
+    env_file:
+      - .env
+    volumes:
+      - uploads_data:/app/uploads
+  worker:
+    build:
+      context: .
+      dockerfile: backend/dockerfile
+    command: celery -A celery_app.celery_app worker --loglevel=info
+    container_name: pixelproof-celery-worker
+    depends_on:
+      - redis
+      - db
+    env_file:
+      - .env
+    volumes:
+      - uploads_data:/app/uploads
+  redis:
+    image: redis:latest
+    container_name: pixelproof-redis
+    ports:
+      - "6379:6379"
+  db:
+    image: postgres:15-alpine
+    container_name: pixelproof-db
+    environment:
+      POSTGRES_DB: pixelproof
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+  uploads_data:
